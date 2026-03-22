@@ -83,12 +83,13 @@ COM-Port anpassen (`COM5` ist Standard in `src\tests\Test-All.ps1`).
 | **[0]–[6i]** | siehe **Referenztabelle unten** (jede `Write-Host`-Überschrift 1:1) |
 | **[6j]** | `Merge-HashtableIntoConfig`, `Get-AvailableComPorts`, `Test-PortConnected` (`$null`), `Update-ConfigComPort` (Temp-Datei). |
 | **[6k]** | Weitere **Merge-Randfälle** (`$null`-Werte, leeres `KeysOnly @()` → volle Liste), `Update-ConfigComPort` (fehlende Datei). |
+| **[6l]** | **`Get-3DPConsoleNormalizedBatchCommandLines`**, **Session-Transcript-Helfer** (`Test-3DPConsoleSessionTranscriptEnabled`, Start/Write mit Temp-Config/Temp-Ordner), optional **Pester** für **`Invoke-MainCommandBatchModeCore`** / erweitertes **`Invoke-3DPConsoleParseEarlyArgs`**. |
 
 Vor **Integration [7]** (bzw. nur bei **`-IntegrationPlanOnly`**) gibt `src\tests\Test-All.ps1` einen kurzen **Integrations-Plan** aus (gleiche Schalter wie `-WithPort`).
 
 ### Referenz: Unit-Überschriften = `Write-Host` in `Test-All.ps1`
 
-Die folgende Tabelle entspricht der **tatsächlichen Reihenfolge** der Blöcke (Zeilen ~151–698). So kannst du Doku und Skript **Zeile für Zeile** vergleichen.
+Die folgende Tabelle entspricht der **tatsächlichen Reihenfolge** der Blöcke (Zeilen ~160–760, je nach Version). So kannst du Doku und Skript **Zeile für Zeile** vergleichen.
 
 | Abschnitt | Exakte Überschrift im Skript | Was geprüft wird (Stichworte) |
 |-----------|------------------------------|--------------------------------|
@@ -113,6 +114,7 @@ Die folgende Tabelle entspricht der **tatsächlichen Reihenfolge** der Blöcke (
 | **[6i]** | `=== [6i] Parse-MeshLineToNumbers ===` | **`Parse-MeshLineToNumbers`**. |
 | **[6j]** | `=== [6j] Init/Port-Helfer ... ===` | **`Merge-HashtableIntoConfig`** (`$null`-Quelle, `KeysOnly`), **`Get-AvailableComPorts`**, **`Test-PortConnected`** (`$null`), **`Update-ConfigComPort`** (Temp-Datei). |
 | **[6k]** | `=== [6k] Merge-Randfaelle + Update-Config ... ===` | **`Merge-HashtableIntoConfig`** (`$null`-Werte im Quell-Hashtable, leeres `KeysOnly @()`); **`Update-ConfigComPort`** (fehlende Datei → `false`). |
+| **[6l]** | `=== [6l] Batch-Zeilen + Session-Transcript (ohne Drucker) ===` | **`Get-3DPConsoleNormalizedBatchCommandLines`** (Leerzeilen, `#`, Trim); **Transcript**: Default aus, bei `$true` + Temp-Ordner **Start**/**Write**; ggf. Restore `$Script:Config` / `$Script:SessionTranscriptFilePath`. |
 
 **Hinweis:** Am Anfang setzt `Test-All.ps1` **`$env:THREEDP_CONSOLE_SKIP_MAIN = '1'`** und dot-sourced **`3DP-Console.ps1`** — damit laufen alle obigen Tests **ohne** interaktives **`Main`**. (Veraltet, wird noch gemappt: `PRUSAMINI_SKIP_MAIN`.)
 
@@ -123,7 +125,7 @@ Im Skript: ``Write-Host "`n=== [7] Integration $intComPort ==="`` (Platzhalter =
 Voraussetzung: **`WithPort`** und **nicht** **`IntegrationPlanOnly`**, und SerialPort lässt sich öffnen.  
 Zuerst: **`Write-IntegrationCoveragePlan`** (nur Text). Dann **Reihenfolge** der Integrationstests wie im Skript (Auszug mit **Test-Name**-Titeln):
 
-1. **CLI:** `3DP-Console.ps1 -Command temp` → **`Invoke-SingleCommand`** / Port-Pfad.  
+1. **CLI:** `3DP-Console.ps1 -Command temp` → **`Invoke-SingleCommand`** / Port-Pfad. (Batch `-CommandFile`/`-StdinCommands`: **manuell** / CI — nicht in **[7]**-Baseline.)  
 2. **`Invoke-SingleCommand`** `temp`, **`Invoke-SingleCommand`** `M105`.  
 3. **M105, M114, M115** über **`Send-Gcode`** + **`Read-SerialResponse`**.  
 4. **`Invoke-SdLs`** (`/ls`).  
@@ -155,7 +157,7 @@ Bei **`-IntegrationPlanOnly`** (mit oder ohne **`-WithPort`**) erscheint nur die
 | **`Invoke-GcodeAndWaitOrAbort`** ohne echten `SerialPort` | `src\tests\3DP-Console.Pester.Tests.ps1`: **Mock** von `Send-Gcode` / `Read-SerialResponse`. Start: `.\src\tests\Run-Pester.ps1` |
 | **`Get-GcodeTimeout`** (Sanity) | Derselbe Pester-Block nach Dot-Source von `3DP-Console.ps1`. |
 | **Messbare %** auf `lib\*.ps1` + `3DP-Console.ps1` | `Run-Pester.ps1` mit **CodeCoverage** (ohne `-NoCodeCoverage`). Benötigt **Pester 5+** (`Install-Module`). Stand z. B. **~42 %** Command-Coverage bei **123** Pester-Tests (Zielvorgabe Pester: 75 % — siehe Fahrplan unten). |
-| **Pester-Umfang** | u. a. `Invoke-3DPConsoleParseEarlyArgs` / `Write-3DPConsole*Screen`, **`Get-PortOrRetry`** (Mock `Get-AvailableComPorts`/`Read-Host`), Mesh/UI, `Send-Gcode`, `Invoke-SingleCommand`/`Invoke-Loop`/`Invoke-LevelCompareLoop` (stark gemockt), `Get-GcodeTimeout`, `Write-ListLines`, Config/COM-Helfer, `Invoke-GcodeAndWaitOrAbort` (Mock). **`Invoke-CommandPalette`/`Render-Palette`** bewusst nicht per Test-Queue (hängt im Pester-Host). |
+| **Pester-Umfang** | u. a. `Invoke-3DPConsoleParseEarlyArgs` (inkl. `-CommandFile`/`-StdinCommands`) / `Write-3DPConsole*Screen`, **`Get-3DPConsoleNormalizedBatchCommandLines`**, **`Invoke-MainCommandBatchModeCore`** (Mock), **`Get-PortOrRetry`** (Mock `Get-AvailableComPorts`/`Read-Host`), Mesh/UI, `Send-Gcode`, `Invoke-SingleCommand`/`Invoke-Loop`/`Invoke-LevelCompareLoop` (stark gemockt), `Get-GcodeTimeout`, `Write-ListLines`, Config/COM-Helfer, `Invoke-GcodeAndWaitOrAbort` (Mock). **`Invoke-CommandPalette`/`Render-Palette`** bewusst nicht per Test-Queue (hängt im Pester-Host). |
 | `Read-SerialAndCapture`, vollständiges **`Send-Gcode`** inkl. `WriteLine` | Weiterhin **Integration** (`-WithPort` + ggf. `-TestLevelCompare` / `-TestTemp2`) oder später Refactor; siehe `src\tests\README.md`. |
 
 #### Fahrplan Pester: von ~42 % Richtung ~75 % (Command-Coverage)
@@ -236,6 +238,9 @@ Spalte **Stufe** verwendet die Legende oben. **Unterart** nur bei **Kein Auto-Te
 | `Read-SerialResponse` | Direkt | Integration [7]; in Pester oft **gemockt** für `Invoke-GcodeAndWaitOrAbort`. |
 | `Invoke-GcodeAndWaitOrAbort` | Direkt (Mock) + Rest | **Pester:** `src\tests\3DP-Console.Pester.Tests.ps1`. Am Drucker: v. a. **`Invoke-InteractiveBedLevelLoop`** / **manuell**. |
 | `Read-SerialAndCapture` | Bedingt | Mit `-TestLevelCompare` / `-TestTemp2` (siehe Copy-Paste). **Ohne** diese Flags im üblichen `-WithPort`-Lauf: **Kein Auto-Test** · **Szenario fehlt** für diesen Codepfad. |
+| `Test-3DPConsoleSessionTranscriptEnabled` | Direkt | Unit **[6l]** (Default aus; optional String-„true“). |
+| `Get-3DPConsoleSessionTranscriptDirectory` | Teilweise | Über **[6l]** (leer → `SessionLogs` unter `BasePath`) indirekt mit Start/Write. |
+| `Start-3DPConsoleSessionTranscript` / `Write-3DPConsoleSessionTranscriptLine` | Direkt + Indirekt | **Direkt:** **[6l]** mit Temp-Ordner. **Indirekt:** `Send-Gcode` / `Read-Serial*` / Monitor bei aktivem Transcript am Drucker. |
 
 ### `3DP-Console.Loops.ps1`
 
@@ -250,7 +255,7 @@ Spalte **Stufe** verwendet die Legende oben. **Unterart** nur bei **Kein Auto-Te
 
 | Funktion | Stufe | Unterart / Kurz-Hinweis |
 |----------|-------|-------------------------|
-| `Invoke-SingleCommand` | Direkt | Integration + Subprozess `3DP-Console.ps1 -Command …`. |
+| `Invoke-SingleCommand` | Direkt | Integration + Subprozess `3DP-Console.ps1 -Command …`; mehrfach im Batch-Modus (`-CommandFile` / `-StdinCommands`). |
 | `Get-PortOrRetry` | Direkt + Teilweise | **Pester:** `Get-PortOrRetry (mocked)` in `3DP-Console.Pester.Tests.ps1` (früher Rückgabe, `q`, numerische Wahl, `-ForceShowSelection`, leere Portliste). **Teilweise:** alle Konsolen-/Clear-Host-Pfade; vollständig weiter **manuell** oder nach Refactor. |
 | `Get-AvailableComPorts` | Direkt + Teilweise | **Direkt:** Unit **[6j]** (liefert Array, kein Abbruch). **Teilweise:** interaktives Port-Menü / alle Gerätepfade nicht isoliert getestet. |
 | `Update-ConfigComPort` | Direkt + Teilweise | **Direkt:** Unit **[6j]** (Temp-Datei), **[6k]** (fehlende Datei → `false`). **Teilweise:** Menü „Port speichern“. |
@@ -267,6 +272,8 @@ Spalte **Stufe** verwendet die Legende oben. **Unterart** nur bei **Kein Auto-Te
 |----------|-------|-------------------------|
 | `New-3DPConsoleSerialPort` | Teilweise | Wird vom `-Command`-Pfad genutzt; **Pester-CodeCoverage** zählt diese Datei. |
 | `Invoke-MainCommandLineMode` | Direkt + Teilweise | **Pester:** kein Port / Open wirft → Exitcode **1**. Erfolgspfad mit echtem COM: **Integration** (`3DP-Console.ps1 -Command …`). |
+| `Get-3DPConsoleNormalizedBatchCommandLines` | Direkt | Unit **[6l]** + **Pester**. |
+| `Invoke-MainCommandBatchMode` / `Invoke-MainCommandBatchModeCore` / `Invoke-MainCommandBatchModeDefaultRun` | Direkt + Teilweise | **Pester:** `Invoke-MainCommandBatchModeCore` mit Mock-Port. **Teilweise:** vollständiger Batch mit echtem COM = **manuell** oder CI (`-CommandFile` / Pipeline). |
 
 **Hinweis Pester CodeCoverage:** `Run-Pester.ps1` misst **nicht** `3DP-Console.Main.ps1`, `3DP-Console.PaletteUI.ps1`, `3DP-Console.Init.ps1` und `3DP-Console.Serial.ps1` (UI, Bootstrap, serielle I/O-Schleifen). Die Prozentzahl bezieht sich auf die übrigen **6** Fragmente + `3DP-Console.ps1`; Stand zuletzt **über 70 %** (ca. **77 %**).
 

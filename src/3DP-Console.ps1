@@ -24,6 +24,13 @@
 .PARAMETER Command
     Execute single command and exit (no interactive console). e.g. G28, G29, home, level (G29), loop prepare, loop level_compare.
 
+.PARAMETER CommandFile
+    Path to a UTF-8 text file: one command per line (same syntax as -Command). Lines starting with # and blank lines are skipped.
+    Use -CommandFile - to read all lines from stdin until EOF (non-interactive pipes).
+
+.PARAMETER StdinCommands
+    Read commands from the PowerShell pipeline (one object/string per line). Example: Get-Content cmds.txt | .\3DP-Console.ps1 -StdinCommands -ComPort COM3
+
 .EXAMPLE
     .\src\3DP-Console.ps1
     Starts the console interactively (from repository root).
@@ -34,7 +41,7 @@
 #>
 
 #Requires -Version 5.1
-$Script:Version = '26.3.0'
+$Script:Version = '26.4.0'
 
 #region 00-EnvNormalize
 # Tests / tooling: skip interactive Main() when THREEDP_CONSOLE_SKIP_MAIN=1 (printer-agnostic).
@@ -46,7 +53,7 @@ Sync-3DPConsoleLegacySkipMainEnv
 #endregion
 
 # =============================================================================
-# INHALTSVERZEICHNIS (VS Code / Cursor: #region einklappen)
+# INHALTSVERZEICHNIS (VS Code : #region einklappen)
 #   01-EarlyExit     Parameter, -Help / -About / -Example
 #   02-LoadLib       Pfade + foreach dot-source der Fragmente unter .\lib\ (nicht aus function!)
 #
@@ -68,22 +75,24 @@ Sync-3DPConsoleLegacySkipMainEnv
 function Invoke-3DPConsoleParseEarlyArgs {
     param([object[]]$ArgList = @())
     if ($null -eq $ArgList) { $ArgList = @() }
-    $Help = $false; $About = $false; $Example = $false
-    $ComPort = ''; $ConfigPath = ''; $Command = ''
+    $Help = $false; $About = $false; $Example = $false; $StdinCommands = $false
+    $ComPort = ''; $ConfigPath = ''; $Command = ''; $CommandFile = ''
     $i = 0
     while ($i -lt $ArgList.Count) {
         $a = $ArgList[$i]
         if ($a -eq '-Help' -or $a -eq '-h') { $Help = $true }
         elseif ($a -eq '-About') { $About = $true }
         elseif ($a -eq '-Example' -or $a -eq '-e') { $Example = $true }
+        elseif ($a -eq '-StdinCommands') { $StdinCommands = $true }
         elseif ($a -eq '-ComPort' -and ($i + 1) -lt $ArgList.Count) { $i++; $ComPort = $ArgList[$i].ToString().Trim() }
         elseif ($a -eq '-ConfigPath' -and ($i + 1) -lt $ArgList.Count) { $i++; $ConfigPath = $ArgList[$i].ToString().Trim() }
         elseif ($a -eq '-Command' -and ($i + 1) -lt $ArgList.Count) { $i++; $Command = $ArgList[$i].ToString().Trim() }
+        elseif ($a -eq '-CommandFile' -and ($i + 1) -lt $ArgList.Count) { $i++; $CommandFile = $ArgList[$i].ToString().Trim() }
         $i++
     }
     [pscustomobject]@{
-        Help = $Help; About = $About; Example = $Example
-        ComPort = $ComPort; ConfigPath = $ConfigPath; Command = $Command
+        Help = $Help; About = $About; Example = $Example; StdinCommands = $StdinCommands
+        ComPort = $ComPort; ConfigPath = $ConfigPath; Command = $Command; CommandFile = $CommandFile
     }
 }
 
@@ -114,7 +123,9 @@ function Write-3DPConsoleHelpScreen {
     Write-Host '  -Example    Show examples' -ForegroundColor Gray
     Write-Host '  -ComPort    COM-Port override (e.g. COM3)' -ForegroundColor Gray
     Write-Host '  -ConfigPath Path to config file' -ForegroundColor Gray
-    Write-Host '  -Command    Execute single command (no console): G28, G29, home, level, loop prepare, loop level_compare, ...' -ForegroundColor Gray
+    Write-Host '  -Command    Single command (no console): G28, home, loop prepare, ...' -ForegroundColor Gray
+    Write-Host '  -CommandFile Path to UTF-8 file, one command per line (# = comment). Use - for stdin.' -ForegroundColor Gray
+    Write-Host '  -StdinCommands Read commands from pipeline (e.g. Get-Content cmds.txt | ...)' -ForegroundColor Gray
     Write-Host ''
     Write-Host 'In console: Type /, G or M for commands. Esc=Cancel' -ForegroundColor DarkGray
 }
@@ -131,6 +142,8 @@ function Write-3DPConsoleExampleScreen {
     Write-Host '  # Execute single command (no interactive console):' -ForegroundColor White
     Write-Host '  .\src\3DP-Console.ps1 -ComPort COM3 -Command G28' -ForegroundColor Gray
     Write-Host '  .\src\3DP-Console.ps1 -ComPort COM3 -Command "loop level_compare"' -ForegroundColor Gray
+    Write-Host '  .\src\3DP-Console.ps1 -ComPort COM3 -CommandFile .\my-commands.txt' -ForegroundColor Gray
+    Write-Host '  Get-Content cmds.txt | .\src\3DP-Console.ps1 -ComPort COM3 -StdinCommands' -ForegroundColor Gray
     Write-Host ''
     Write-Host '  # Help/Info before start:' -ForegroundColor White
     Write-Host '  .\src\3DP-Console.ps1 -Help' -ForegroundColor Gray
@@ -197,6 +210,8 @@ $Example = $_early.Example
 $ComPort = $_early.ComPort
 $ConfigPath = $_early.ConfigPath
 $Command = $_early.Command
+$CommandFile = $_early.CommandFile
+$StdinCommands = [bool]$_early.StdinCommands
 #endregion 01-EarlyExit
 
 #region 02-LoadLib

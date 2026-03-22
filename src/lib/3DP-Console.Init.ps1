@@ -87,6 +87,10 @@ if (-not (Ensure-SystemIOPortsLoaded)) {
     exit 1
 }
 
+# Strg+C: Main registriert Console.CancelKeyPress (ohne PowerShell „Batch abbrechen?“); Loops/Serial pollen das Flag.
+$Script:3DPConsoleInterruptRequested = $false
+$Script:3DPConsoleCancelKeyPressHandler = $null
+
 # --- Default config (overridden by 3DP-Config.ps1) ---
 $Script:Config = @{
     ComPort = "COM3"
@@ -115,6 +119,9 @@ $Script:Config = @{
     HintReconnect = "r=Reconnect  /, G, M=Commands  quit=Exit"
     HelpText = "G, M, / = Command preview   d={DueseLabel}  b=Bed  loop prepare|level_compare|cooldown  off=Heater"
     ExitMessage = "Console closed."
+    # Session transcript (see 3DP-Config.ps1): off unless enabled in config file
+    SessionTranscriptEnabled = $false
+    SessionTranscriptDirectory = ''
 }
 # --- Load config file (Loops, Macros, UI-Strings) ---
 # If no config exists: create from embedded template (only on interactive start, not for tests).
@@ -153,6 +160,8 @@ $configTemplateContent = @'
     HintReconnect      = "r=Reconnect  /, G, M=Commands  quit=Exit"
     HelpText           = "G, M, / = Commands   /pla /abs /move /extrude /reverse /monitor /ls /sdprint /macro  loop  off"
     ExitMessage        = "Console closed."
+    SessionTranscriptEnabled   = $false
+    SessionTranscriptDirectory = ''
     MessungenCount           = 3
     CsvOutputPath            = (Join-Path $PSScriptRoot "BedLevelResults")
     CsvFilePrefix            = "BedLevel_Measurement"
@@ -298,6 +307,7 @@ $script:ConfigMergeKeys = @(
     'MessungenCount','CommandTimeoutMs','G29MaxWaitSeconds','VergleicheMitDurchschnitt','MaxTolerierteAbweichungMm','HeizungVorMessung',
     'NozzleTempCelsius','BettTempCelsius','PLA_Hotend','PLA_Bed','ABS_Hotend','ABS_Bed','xy_feedrate','z_feedrate','e_feedrate','default_extrusion','monitor_interval',
     'ConsoleTitle','StatusConnected','StatusReconnecting','HintCommands','HintShortcuts','HintReconnect','HelpText','ExitMessage',
+    'SessionTranscriptEnabled','SessionTranscriptDirectory',
     'CsvOutputPath','CsvFilePrefix','MeshThresholdGreenMm','MeshThresholdYellowMm','Loops','LoopOrder','Macros','GCommands','MCommands','SlashCommands','QuickActions'
 )
 

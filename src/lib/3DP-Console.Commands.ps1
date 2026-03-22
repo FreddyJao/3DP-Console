@@ -133,6 +133,8 @@ function Invoke-Monitor {
     Write-Host ('  Monitor every ' + $interval + 's. Ctrl+C to exit.') -ForegroundColor Cyan
     try {
         while ($true) {
+            if ($env:THREEDP_CONSOLE_SKIP_MAIN -ne '1' -and (Test-3DPConsoleCtrlCRequestedAndReset)) { break }
+            Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line 'M105'
             $Port.WriteLine('M105')
             Start-Sleep -Milliseconds 800
             if ($Port.BytesToRead -gt 0) {
@@ -140,6 +142,7 @@ function Invoke-Monitor {
                 foreach ($line in ($raw -split "[\r\n]+")) {
                     $line = $line.Trim()
                     if ($line) {
+                        Write-3DPConsoleSessionTranscriptLine -Kind RECV -Line $line
                         $fmt = Format-TemperatureReport -Line $line
                         if ($fmt) { $fmt | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan } }
                     }
@@ -158,6 +161,7 @@ function Invoke-Monitor {
 function Invoke-SdLs {
     param([object]$Port)
     $Port.DiscardInBuffer()
+    Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line 'M20'
     $Port.WriteLine('M20')
     Start-Sleep -Milliseconds 500
     $buf = ''
@@ -171,6 +175,10 @@ function Invoke-SdLs {
         Start-Sleep -Milliseconds 50
     }
     $lines = $buf -split "[\r\n]+"
+    foreach ($l in $lines) {
+        $t = $l.Trim()
+        if ($t) { Write-3DPConsoleSessionTranscriptLine -Kind RECV -Line $t }
+    }
     $files = @()
     foreach ($l in $lines) {
         $l = $l.Trim()
@@ -188,8 +196,10 @@ function Invoke-SdPrint {
     if (-not $Filename) { Write-Host '  Syntax: /sdprint <filename.g>' -ForegroundColor Yellow; return }
     $fn = $Filename.Trim().ToLower()
     if (-not $fn.EndsWith('.g') -and -not $fn.EndsWith('.gcode')) { $fn = $fn + '.g' }
+    Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line ('M23 ' + $fn)
     $Port.WriteLine('M23 ' + $fn)
     Start-Sleep -Milliseconds 300
+    Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line 'M24'
     $Port.WriteLine('M24')
     Write-Host ('  SD-Druck gestartet: ' + $fn) -ForegroundColor Green
 }

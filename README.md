@@ -32,7 +32,36 @@ Combine multiple commands into one sequence. Simplifies recurring processes like
 
 ### Highly configurable
 
-Configure COM port, baud rate, macros, loops, commands, response timeouts, and material parameters (e.g. PLA temperatures). Not all options are fully documented yet—check the code and `3DP-Config.ps1` for details.
+Configure COM port, baud rate, macros, loops, commands, response timeouts, and material parameters (e.g. PLA temperatures). The table below lists the main keys; the shipped [`src/3DP-Config.ps1`](src/3DP-Config.ps1) is the source of truth (comments per section).
+
+## Configuration reference (`3DP-Config.ps1`)
+
+| Group | Keys (summary) |
+|-------|----------------|
+| **Serial** | `ComPort`, `BaudRate` |
+| **Temperatures** | `NozzleTempCelsius`, `BettTempCelsius`, `PLA_*`, `ABS_*` |
+| **Motion** | `xy_feedrate`, `z_feedrate`, `e_feedrate`, `default_extrusion` |
+| **Monitor** | `monitor_interval` (seconds for `/monitor`) |
+| **UI** | `DueseLabel`, `MaxVisibleItems`, `ConsoleTitle`, `StatusConnected`, `HintCommands`, `HintShortcuts`, `HelpText`, `ExitMessage`, … |
+| **Timeouts** | `G28G29TimeoutMs`, `HeatingTimeoutMs`, `DefaultGcodeTimeoutMs`, `CommandTimeoutMs`, `G29MaxWaitSeconds` |
+| **Bed level / CSV** | `MessungenCount`, `CsvOutputPath`, `CsvFilePrefix`, `VergleicheMitDurchschnitt`, `MaxTolerierteAbweichungMm`, `HeizungVorMessung`, `MeshThresholdGreenMm`, `MeshThresholdYellowMm` |
+| **Palettes** | `GCommands`, `MCommands`, `SlashCommands`, `QuickActions` (arrays of hashtables) |
+| **Loops** | `Loops` (hashtable per loop), `LoopOrder` (display order) |
+| **Macros** | `Macros` (hashtable name → string or string array) |
+| **Session log** | `SessionTranscriptEnabled` (`$false` default), `SessionTranscriptDirectory` (empty = `SessionLogs` next to `3DP-Console.ps1`) |
+
+Nested loop entries (`prepare`, `level_compare`, `temp2_*`, …) use keys like `desc`, `cmds`, `repeat`, `action`, `init`—see comments in `3DP-Config.ps1`.
+
+## Non-interactive use (CI / scripts)
+
+| Mode | Example |
+|------|---------|
+| Single command | `.\src\3DP-Console.ps1 -ComPort COM3 -Command G28` |
+| **File** (one command per line, `#` = comment) | `.\src\3DP-Console.ps1 -ComPort COM3 -CommandFile .\cmds.txt` |
+| **Stdin** (pipeline) | `Get-Content cmds.txt` (pipe) `.\src\3DP-Console.ps1 -ComPort COM3 -StdinCommands` |
+| **Stdin** (dash) | `type cmds.txt` (pipe) `.\src\3DP-Console.ps1 -ComPort COM3 -CommandFile -` |
+
+Do not combine `-Command` with `-CommandFile` / `-StdinCommands`. Do not combine `-StdinCommands` with `-CommandFile`.
 
 ## Prusa Mini and beyond
 
@@ -60,6 +89,8 @@ From the **repository root** (the folder that contains `src/`):
 .\src\3DP-Console.ps1 -ComPort COM4
 .\src\3DP-Console.ps1 -Help
 .\src\3DP-Console.ps1 -Command "loop level_compare"
+.\src\3DP-Console.ps1 -ComPort COM4 -CommandFile .\batch.txt
+Get-Content .\batch.txt | .\src\3DP-Console.ps1 -ComPort COM4 -StdinCommands
 ```
 
 **Note:** `Start-Console.cmd` in the repo root launches `src\3DP-Console.ps1`.

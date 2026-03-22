@@ -171,6 +171,13 @@ Test-Name "Console -Example shows examples" {
     $out = & (Join-Path $ProjectRoot "3DP-Console.ps1") -Example 2>&1
     if ($out -notmatch 'Examples') { throw "Example output expected" }
     if ($out -notmatch '-Command') { throw "-Command should appear in examples" }
+    if ($out -notmatch 'CommandFile|StdinCommands') { throw "Batch examples (-CommandFile / -StdinCommands) expected" }
+}
+Test-Name "ParseEarlyArgs kennt CommandFile und StdinCommands" {
+    $p1 = Invoke-3DPConsoleParseEarlyArgs -ArgList @('-CommandFile', '.\batch.txt')
+    if ($p1.CommandFile -ne '.\batch.txt') { throw "CommandFile not parsed" }
+    $p2 = Invoke-3DPConsoleParseEarlyArgs -ArgList @('-StdinCommands')
+    if (-not $p2.StdinCommands) { throw "StdinCommands not parsed" }
 }
 
 Write-Host "`n=== [1] Load Config ===" -ForegroundColor Cyan
@@ -710,6 +717,53 @@ Test-Name "Update-ConfigComPort fehlende Datei -> false" {
     if (Test-Path -LiteralPath $ghost) { Remove-Item -LiteralPath $ghost -Force }
     $r = Update-ConfigComPort -ConfigPath $ghost -NewComPort COM9
     if ($r) { throw "Expected false for missing config file" }
+}
+
+Write-Host "`n=== [6l] Batch-Zeilen + Session-Transcript (ohne Drucker) ===" -ForegroundColor Cyan
+Test-Name "Get-3DPConsoleNormalizedBatchCommandLines trimmt und skippt Kommentare" {
+    $r = @(Get-3DPConsoleNormalizedBatchCommandLines -RawLines @('', '  G28  ', '# skip', 'M105'))
+    if ($r.Count -ne 2) { throw "Expected 2 lines, got $($r.Count)" }
+    if ($r[0] -ne 'G28' -or $r[1] -ne 'M105') { throw "Unexpected normalized lines: $($r -join ' | ')" }
+}
+Test-Name "Get-3DPConsoleNormalizedBatchCommandLines null -> leer" {
+    $r = @(Get-3DPConsoleNormalizedBatchCommandLines -RawLines $null)
+    if ($r.Count -ne 0) { throw "Expected empty array" }
+}
+Test-Name "Test-3DPConsoleSessionTranscriptEnabled Standard aus" {
+    if (Test-3DPConsoleSessionTranscriptEnabled) { throw "Transcript should be disabled by default in test config" }
+}
+Test-Name "Test-3DPConsoleSessionTranscriptEnabled true wenn Config true" {
+    $bak = $Script:Config.SessionTranscriptEnabled
+    try {
+        $Script:Config.SessionTranscriptEnabled = $true
+        if (-not (Test-3DPConsoleSessionTranscriptEnabled)) { throw "Expected enabled when Config is true" }
+    } finally {
+        $Script:Config.SessionTranscriptEnabled = $bak
+    }
+}
+Test-Name "Session transcript schreibt Zeile wenn aktiviert (Temp-Ordner)" {
+    $dir = Join-Path $env:TEMP ("3dp_tr_{0}" -f [Guid]::NewGuid().ToString('N'))
+    $bakE = $Script:Config.SessionTranscriptEnabled
+    $bakD = $Script:Config.SessionTranscriptDirectory
+    try {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $Script:Config.SessionTranscriptEnabled = $true
+        $Script:Config.SessionTranscriptDirectory = $dir
+        $Script:3DPConsoleSessionTranscriptStarted = $false
+        $Script:SessionTranscriptFilePath = $null
+        Start-3DPConsoleSessionTranscript -ComPort 'COM_TEST'
+        Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line 'G28'
+        if (-not $Script:SessionTranscriptFilePath) { throw "No transcript path set" }
+        if (-not (Test-Path -LiteralPath $Script:SessionTranscriptFilePath)) { throw "Transcript file missing" }
+        $raw = Get-Content -LiteralPath $Script:SessionTranscriptFilePath -Raw -Encoding UTF8
+        if ($raw -notmatch 'G28') { throw "Expected G28 in log" }
+    } finally {
+        $Script:Config.SessionTranscriptEnabled = $bakE
+        $Script:Config.SessionTranscriptDirectory = $bakD
+        $Script:3DPConsoleSessionTranscriptStarted = $false
+        $Script:SessionTranscriptFilePath = $null
+        if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 # =============================================================================

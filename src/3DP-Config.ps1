@@ -59,6 +59,14 @@
     ExitMessage        = "Console closed."
 
     # -------------------------------------------------------------------------
+    # Session transcript (Debug-Log: gesendeter G-Code + Rohzeilen vom Drucker)
+    # Standard: aus. Nur aktivieren, wenn du eine zeitgestempelte .log-Datei brauchst.
+    # -------------------------------------------------------------------------
+    SessionTranscriptEnabled   = $false
+    # Leer = Ordner "SessionLogs" neben 3DP-Console.ps1; sonst absoluter Pfad oder relativ zu diesem Skriptordner
+    # SessionTranscriptDirectory = ""
+
+    # -------------------------------------------------------------------------
     # BedLevel loop (level_compare - CSV storage, round comparison)
     # -------------------------------------------------------------------------
     MessungenCount           = 3

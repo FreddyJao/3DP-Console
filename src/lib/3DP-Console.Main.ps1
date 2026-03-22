@@ -11,9 +11,52 @@
 function Main {
     $configPath = Join-Path $Script:BasePath "3DP-Config.ps1"
 
-    # -Command: Execute once and exit (no interactive console)
-    if ($Command -and $Command.Trim()) {
+    $hasCmd = $Command -and $Command.Trim()
+    $hasStdinBatch = $StdinCommands
+    $hasFileBatch = $CommandFile -and $CommandFile.Trim()
+    if ($hasStdinBatch -and $hasFileBatch) {
+        Write-Host '  Error: Use either -StdinCommands or -CommandFile, not both.' -ForegroundColor Red
+        return 1
+    }
+    if ($hasCmd -and ($hasStdinBatch -or $hasFileBatch)) {
+        Write-Host '  Error: Use either -Command or batch input (-CommandFile / -StdinCommands), not both.' -ForegroundColor Red
+        return 1
+    }
+
+    # -Command: single line, once, exit (no interactive console)
+    if ($hasCmd) {
         return (Invoke-MainCommandLineMode -CommandLine $Command -ConfigPath $configPath)
+    }
+
+    # Batch: one command per line from file or pipeline (CI / scripts)
+    if ($hasStdinBatch -or $hasFileBatch) {
+        $batchRaw = $null
+        if ($hasStdinBatch) {
+            $batchRaw = @($input)
+        } else {
+            $fp = $CommandFile.Trim()
+            if ($fp -eq '-') {
+                try {
+                    $batchRaw = [Console]::In.ReadToEnd() -split "`r?`n"
+                } catch {
+                    Write-Host '  Error: could not read stdin (-CommandFile -).' -ForegroundColor Red
+                    return 1
+                }
+            } else {
+                $fullPath = if ([System.IO.Path]::IsPathRooted($fp)) { $fp } else { Join-Path $Script:BasePath $fp }
+                if (-not (Test-Path -LiteralPath $fullPath)) {
+                    Write-Host ('  Error: Command file not found: ' + $fullPath) -ForegroundColor Red
+                    return 1
+                }
+                try {
+                    $batchRaw = Get-Content -LiteralPath $fullPath -Encoding UTF8
+                } catch {
+                    Write-Host ('  Error: could not read command file: ' + $_.Exception.Message) -ForegroundColor Red
+                    return 1
+                }
+            }
+        }
+        return (Invoke-MainCommandBatchMode -RawLines $batchRaw -ConfigPath $configPath)
     }
 
     $port = $null
@@ -35,6 +78,7 @@ function Main {
         try {
             $port = New-Object System.IO.Ports.SerialPort $comPort, $Script:Config.BaudRate, None, 8, One
             $port.Open()
+            Start-3DPConsoleSessionTranscript -ComPort $comPort
         } catch {
             try { [Console]::Clear() } catch { Clear-Host }
             Write-Host ''
@@ -71,6 +115,19 @@ function Main {
         }
 
         try {
+            # Strg+C: ohne CancelKeyPress fragt PowerShell „Batch abbrechen?“ — z.B. waehrend Start-Sleep in Read-Serial*.
+            $Script:3DPConsoleInterruptRequested = $false
+            $cancelHandler = [ConsoleCancelEventHandler]{
+                param($sender, $e)
+                $e.Cancel = $true
+                $Script:3DPConsoleInterruptRequested = $true
+            }
+            $Script:3DPConsoleCancelKeyPressHandler = $cancelHandler
+            try { [Console]::add_CancelKeyPress($cancelHandler) } catch { }
+            $prevTreatCtrlCAsInput = $false
+            try { $prevTreatCtrlCAsInput = [Console]::TreatControlCAsInput } catch { }
+            try { [Console]::TreatControlCAsInput = $true } catch { }
+            try {
         while ($true) {
             try { [Console]::Clear() } catch { Clear-Host }
             $chosen = Invoke-CommandPalette -PortRef ([ref]$port)
@@ -78,12 +135,18 @@ function Main {
 
             $trimmed = $chosen.cmd.Trim().ToLower()
             if ($trimmed -in 'quit','exit','q') {
+                # Ohne Clear: Cursor steht mitten in der Palette — Read-Host/Send-Gcode überlagern Rahmen und Hinweise.
+                try { [Console]::Clear() } catch { Clear-Host }
+                Write-Host ''
                 if ($port -and $port.IsOpen) {
                     Write-Host '  Turn off heater, close connection?' -ForegroundColor Yellow
                     if (Invoke-Confirm -Prompt '  y/n') {
                         Send-Gcode -Port $port -Gcode "M104 S0`nM140 S0" | Out-Null
                         Start-Sleep -Milliseconds 500
+                        break
                     }
+                    # n = Abbruch: wieder zur Palette
+                    continue
                 }
                 break
             }
@@ -259,6 +322,15 @@ function Main {
         Write-Host ''
         Write-Host (Get-UIString 'ExitMessage') -ForegroundColor Cyan
         break
+            } finally {
+                try { [Console]::TreatControlCAsInput = $prevTreatCtrlCAsInput } catch { }
+                try {
+                    if ($null -ne $Script:3DPConsoleCancelKeyPressHandler) {
+                        [Console]::remove_CancelKeyPress($Script:3DPConsoleCancelKeyPressHandler)
+                        $Script:3DPConsoleCancelKeyPressHandler = $null
+                    }
+                } catch { }
+            }
         } catch {
             $msg = $_.Exception.Message
             try { [Console]::Clear() } catch { Clear-Host }

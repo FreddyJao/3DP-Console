@@ -39,6 +39,75 @@ function Append-SerialChunkToLineBuffer {
     return , @($split.Complete)
 }
 
+$Script:3DPConsoleSessionTranscriptStarted = $false
+$Script:SessionTranscriptFilePath = $null
+
+function Test-3DPConsoleSessionTranscriptEnabled {
+    $v = $Script:Config.SessionTranscriptEnabled
+    if ($null -eq $v) { return $false }
+    if ($v -is [bool]) { return $v }
+    $s = [string]$v
+    return ($s -eq '1' -or $s -eq 'true' -or $s -eq 'yes')
+}
+
+function Get-3DPConsoleSessionTranscriptDirectory {
+    $d = $Script:Config.SessionTranscriptDirectory
+    if ($null -eq $d -or [string]::IsNullOrWhiteSpace([string]$d)) {
+        return (Join-Path $Script:BasePath 'SessionLogs')
+    }
+    $t = [string]$d.Trim()
+    if ([System.IO.Path]::IsPathRooted($t)) { return $t }
+    return (Join-Path $Script:BasePath $t)
+}
+
+function Start-3DPConsoleSessionTranscript {
+    param([string]$ComPort)
+    $Script:3DPConsoleSessionTranscriptStarted = $false
+    $Script:SessionTranscriptFilePath = $null
+    if (-not (Test-3DPConsoleSessionTranscriptEnabled)) { return }
+    try {
+        $dir = Get-3DPConsoleSessionTranscriptDirectory
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+        $safeCom = if ($ComPort) { ($ComPort -replace '[\\/:*?"<>|]', '_') } else { 'PORT' }
+        $fn = '3DP-Session_{0:yyyyMMdd_HHmmss}_{1}.log' -f (Get-Date), $safeCom
+        $Script:SessionTranscriptFilePath = Join-Path $dir $fn
+        $header = @(
+            '--- 3DP-Console session transcript ---'
+            ('Started: ' + (Get-Date -Format 'o'))
+            ('COM: ' + $ComPort + '  Baud: ' + [string]$Script:Config.BaudRate)
+            '---'
+        ) -join [Environment]::NewLine
+        $header | Out-File -FilePath $Script:SessionTranscriptFilePath -Encoding UTF8
+        $Script:3DPConsoleSessionTranscriptStarted = $true
+        Write-Host ('  Session transcript: ' + $Script:SessionTranscriptFilePath) -ForegroundColor DarkCyan
+    } catch {
+        Write-Host ('  Session transcript: could not start (' + $_.Exception.Message + ')') -ForegroundColor Yellow
+    }
+}
+
+function Write-3DPConsoleSessionTranscriptLine {
+    param(
+        [ValidateSet('SEND', 'RECV', 'HOST', 'INFO')]
+        [string]$Kind,
+        [string]$Line
+    )
+    if (-not (Test-3DPConsoleSessionTranscriptEnabled)) { return }
+    if (-not $Script:3DPConsoleSessionTranscriptStarted) { return }
+    if ([string]::IsNullOrWhiteSpace($Line)) { return }
+    try {
+        $ts = Get-Date -Format 'HH:mm:ss.fff'
+        $prefix = switch ($Kind) {
+            'SEND' { '>>' }
+            'RECV' { '<<' }
+            'HOST' { '@@' }
+            'INFO' { '##' }
+        }
+        ('[' + $ts + '] ' + $prefix + ' ' + $Line) | Add-Content -Path $Script:SessionTranscriptFilePath -Encoding UTF8
+    } catch { }
+}
+
 function Send-Gcode {
     param([System.IO.Ports.SerialPort]$Port, [string]$Gcode, [scriptblock]$HostCommandCallback)
     if ($Gcode -match '\bM112\b') {
@@ -52,6 +121,7 @@ function Send-Gcode {
         if ($line.StartsWith(';@')) {
             $hostCmd = $line.Substring(2).Trim()
             Write-Host ('  Host command: ' + $hostCmd) -ForegroundColor DarkCyan
+            Write-3DPConsoleSessionTranscriptLine -Kind HOST -Line $hostCmd
             if ($HostCommandCallback) { & $HostCommandCallback $hostCmd } else {
                 if ($hostCmd -eq 'pause') { Read-Host '  [Enter] to continue' }
             }
@@ -59,6 +129,7 @@ function Send-Gcode {
         }
         if ($line.StartsWith(';')) { continue }
         Write-Host ('SENDING: ' + $line) -ForegroundColor Green
+        Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line $line
         $Port.WriteLine($line)
         $lineCount++
         Start-Sleep -Milliseconds 150
@@ -95,9 +166,14 @@ function Read-SerialAndCapture {
     while (((Get-Date) - $start).TotalMilliseconds -lt $Ms) {
         # Ohne diese Abfrage: in IDE/Headless faellt KeyAvailable+ReadKey oft falsch aus (Abgebrochen / Haenger).
         if ($AllowAbort -and $env:THREEDP_CONSOLE_SKIP_MAIN -ne '1') {
+            if (Test-3DPConsoleCtrlCRequestedAndReset) {
+                $Port.ReadTimeout = $prevReadTimeout
+                if (-not $Silent) { Write-Host '  [Abgebrochen]' -ForegroundColor Yellow }
+                return $null
+            }
             $key = $null
             try { if ([Console]::KeyAvailable) { try { $key = [Console]::ReadKey($true) } catch { } } } catch { }
-            if ($key -and $key.Key -eq 'Escape') {
+            if ($key -and ($key.Key -eq [System.ConsoleKey]::Escape -or $key.KeyChar -eq [char]3)) {
                 $Port.ReadTimeout = $prevReadTimeout
                 if (-not $Silent) { Write-Host '  [Abgebrochen]' -ForegroundColor Yellow }
                 return $null
@@ -113,6 +189,7 @@ function Read-SerialAndCapture {
             foreach ($lineRaw in $completeLines) {
                 $line = $lineRaw.Trim()
                 if ($line) {
+                    Write-3DPConsoleSessionTranscriptLine -Kind RECV -Line $line
                     [void]$collected.AppendLine($line)
                     if ($line -match 'Error|!!') { $hadError = $true }
                     if ($line -match '^ok') { $okCount++ }
@@ -162,13 +239,18 @@ function Read-SerialResponse {
     $hadError = $false
     while (((Get-Date) - $start).TotalMilliseconds -lt $Ms) {
         if ($AllowAbort -and $env:THREEDP_CONSOLE_SKIP_MAIN -ne '1') {
+            if (Test-3DPConsoleCtrlCRequestedAndReset) {
+                $Port.ReadTimeout = $prevReadTimeout
+                if (-not $Silent) { Write-Host '  [Abgebrochen]' -ForegroundColor Yellow }
+                return $false
+            }
             $key = $null
             try {
                 if ([Console]::KeyAvailable) {
                     try { $key = [Console]::ReadKey($true) } catch { }
                 }
             } catch { }
-            if ($key -and $key.Key -eq 'Escape') {
+            if ($key -and ($key.Key -eq [System.ConsoleKey]::Escape -or $key.KeyChar -eq [char]3)) {
                 $Port.ReadTimeout = $prevReadTimeout
                 if (-not $Silent) { Write-Host '  [Abgebrochen]' -ForegroundColor Yellow }
                 return $false
@@ -184,6 +266,7 @@ function Read-SerialResponse {
             foreach ($lineRaw in $completeLines) {
                 $line = $lineRaw.Trim()
                 if ($line) {
+                    Write-3DPConsoleSessionTranscriptLine -Kind RECV -Line $line
                     if ($line -match 'Error|!!') { $hadError = $true }
                     if ($line -match '^ok') {
                         $okCount++

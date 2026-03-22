@@ -131,12 +131,15 @@ function Test-PortConnected {
         $Port.DiscardOutBuffer()
         $prevRead = $Port.ReadTimeout
         $Port.ReadTimeout = 500
+        Write-3DPConsoleSessionTranscriptLine -Kind SEND -Line 'M105'
         $Port.WriteLine('M105')
         $deadline = (Get-Date).AddMilliseconds(180)
         $gotOk = $false
         while ((Get-Date) -lt $deadline) {
             if ($Port.BytesToRead -gt 0) {
                 $line = $Port.ReadLine()
+                $trimLine = if ($line) { $line.Trim() } else { '' }
+                if ($trimLine) { Write-3DPConsoleSessionTranscriptLine -Kind RECV -Line $trimLine }
                 if ($line -match 'ok|T:') { $gotOk = $true; break }
             }
             Start-Sleep -Milliseconds 15
@@ -436,6 +439,7 @@ function Invoke-CommandPalette {
                                     try {
                                         $newPort = New-Object System.IO.Ports.SerialPort $Script:Config.ComPort, $Script:Config.BaudRate, None, 8, One
                                         $newPort.Open()
+                                        Start-3DPConsoleSessionTranscript -ComPort $Script:Config.ComPort
                                         $PortRef.Value = $newPort
                                         $connectionStatus = 'connected'
                                         break

@@ -31,6 +31,8 @@ Describe 'Invoke-3DPConsoleParseEarlyArgs' {
         $p.About | Should -BeFalse
         $p.Example | Should -BeFalse
         $p.ComPort | Should -Be ''
+        $p.CommandFile | Should -Be ''
+        $p.StdinCommands | Should -BeFalse
     }
     It '-About' { (Invoke-3DPConsoleParseEarlyArgs -ArgList @('-About')).About | Should -BeTrue }
     It '-Help and -h' {
@@ -52,6 +54,13 @@ Describe 'Invoke-3DPConsoleParseEarlyArgs' {
     It '-Command' {
         $p = Invoke-3DPConsoleParseEarlyArgs -ArgList @('-Command', 'G28')
         $p.Command | Should -Be 'G28'
+    }
+    It '-CommandFile' {
+        $p = Invoke-3DPConsoleParseEarlyArgs -ArgList @('-CommandFile', '.\batch.txt')
+        $p.CommandFile | Should -Be '.\batch.txt'
+    }
+    It '-StdinCommands' {
+        (Invoke-3DPConsoleParseEarlyArgs -ArgList @('-StdinCommands')).StdinCommands | Should -BeTrue
     }
     It 'combined flags' {
         $p = Invoke-3DPConsoleParseEarlyArgs -ArgList @('-ComPort', 'COM1', '-ConfigPath', 'c.ps1', '-Command', 'M105', '-Help')
@@ -1194,6 +1203,35 @@ Describe 'Invoke-MainCommandLineModeCore (mocked)' {
                 $fp
             } `
             -RunCommandScript { param($p, $c) }
+        $r | Should -Be 0
+    }
+}
+
+Describe 'Get-3DPConsoleNormalizedBatchCommandLines' {
+    It 'drops blanks and comments' {
+        $r = @(Get-3DPConsoleNormalizedBatchCommandLines -RawLines @('', '  G28 ', '#x', 'M105'))
+        $r.Count | Should -Be 2
+        $r[0] | Should -Be 'G28'
+        $r[1] | Should -Be 'M105'
+    }
+    It 'null yields empty' {
+        @(Get-3DPConsoleNormalizedBatchCommandLines -RawLines $null).Count | Should -Be 0
+    }
+}
+
+Describe 'Invoke-MainCommandBatchModeCore (mocked)' {
+    BeforeAll { Mock Write-Host { } }
+    It 'returns RunBatch exit code' {
+        $r = Invoke-MainCommandBatchModeCore -NormalizedCommands @('a', 'b') -ChosenPort 'COM_PESTER_BATCH' `
+            -NewPortScript {
+                param($n)
+                $fp = [pscustomobject]@{ IsOpen = $false }
+                $fp | Add-Member -MemberType ScriptMethod -Name Open -Value { $this.IsOpen = $true } -Force
+                $fp | Add-Member -MemberType ScriptMethod -Name Close -Value { $this.IsOpen = $false } -Force
+                $fp | Add-Member -MemberType ScriptMethod -Name Dispose -Value { } -Force
+                $fp
+            } `
+            -RunBatchScript { param($p, $cmds) if ($cmds.Count -eq 2) { 0 } else { 1 } }
         $r | Should -Be 0
     }
 }

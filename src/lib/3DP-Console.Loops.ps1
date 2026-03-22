@@ -7,6 +7,15 @@
 # 10. LOOPS (Level-Compare, allgemeine Loops)
 # =============================================================================
 
+# Nach Strg+C (CancelKeyPress in Main): einmal true, dann Flag loeschen — auch zwischen Start-Sleep in Read-Serial* nutzbar.
+function Test-3DPConsoleCtrlCRequestedAndReset {
+    if ($Script:3DPConsoleInterruptRequested) {
+        $Script:3DPConsoleInterruptRequested = $false
+        return $true
+    }
+    return $false
+}
+
 # Pester: $global:3DPConsoleConsolePollApi = @{ KeyAvailable = { $false }; ReadKey = { $null } }
 if (-not $global:3DPConsoleConsolePollApi) {
     $global:3DPConsoleConsolePollApi = @{
@@ -26,6 +35,8 @@ function Read-3DPConsoleEscapePollCore {
         $k = $null
         try { $k = & $ReadKey } catch { }
         if ($k -and $k.Key -eq [System.ConsoleKey]::Escape) { return 'Escape' }
+        # Mit TreatControlCAsInput: Strg+C kommt als Zeichen — wie Esc abbrechen (ohne PowerShell „Batch abbrechen?“).
+        if ($k -and $k.KeyChar -eq [char]3) { return 'Escape' }
     } catch { }
     return $null
 }
@@ -37,6 +48,7 @@ function Read-3DPConsoleEscapePoll {
         if ($td) { return & $td }
         return $null
     }
+    if (Test-3DPConsoleCtrlCRequestedAndReset) { return 'Escape' }
     $api = $global:3DPConsoleConsolePollApi
     return Read-3DPConsoleEscapePollCore -KeyAvailable $api.KeyAvailable -ReadKey $api.ReadKey
 }
@@ -46,6 +58,7 @@ function Read-3DPConsoleEscapePoll {
 function Read-3DPConsoleEscapePollInteractiveTop {
     $td = $global:3DPConsoleInteractiveTopEscapePollTestDelegate
     if ($td) { return & $td }
+    if (Test-3DPConsoleCtrlCRequestedAndReset) { return 'Escape' }
     $api = $global:3DPConsoleConsolePollApi
     return Read-3DPConsoleEscapePollCore -KeyAvailable $api.KeyAvailable -ReadKey $api.ReadKey
 }
@@ -59,6 +72,7 @@ function Read-3DPConsoleBedLevelMenuKeyCore {
         try { $k = & $ReadKey } catch { }
         if (-not $k) { return 'Continue' }
         if ($k.Key -eq [System.ConsoleKey]::Escape) { return 'Escape' }
+        if ($k.KeyChar -eq [char]3) { return 'Escape' }
         if ($k.Key -eq [System.ConsoleKey]::Enter) { return 'Enter' }
     } catch { }
     return 'Continue'
@@ -71,6 +85,7 @@ function Read-3DPConsoleBedLevelMenuKey {
         if ($td) { return & $td }
         return $null
     }
+    if (Test-3DPConsoleCtrlCRequestedAndReset) { return 'Escape' }
     $api = $global:3DPConsoleConsolePollApi
     $sleep = $global:3DPConsoleConsoleSleepMsForMenu
     return Read-3DPConsoleBedLevelMenuKeyCore -SleepMs $sleep -KeyAvailable $api.KeyAvailable -ReadKey $api.ReadKey
@@ -273,7 +288,7 @@ function Invoke-Temp2LevelingLoop {
         return
     }
 
-    Write-Host ('  Temp2 Leveling (' + $Mode + '): ' + $steps.Count + ' steps. Esc=Cancel') -ForegroundColor Cyan
+    Write-Host ('  Temp2 Leveling (' + $Mode + '): ' + $steps.Count + ' steps. Esc / Strg+C = Cancel') -ForegroundColor Cyan
     Write-Host ''
 
     $inv = [System.Globalization.CultureInfo]::InvariantCulture
@@ -443,7 +458,7 @@ function Invoke-Loop {
         $rc = if ($RepeatCount -gt 0) { $RepeatCount } elseif ($null -ne $entry.repeat) { [Math]::Max(1, [int]$entry.repeat) } else { 3 }
         $init = if ($entry.init) { @($entry.init) } else { @('G28') }
         $useG29T = if ($null -ne $entry.useG29T) { [bool]$entry.useG29T } else { $false }
-        Write-Host ('  Loop "' + $LoopName + '" (' + $rc + 'x G29, CSV + round comparison + Min/Max/Avg). Esc=Cancel') -ForegroundColor Cyan
+        Write-Host ('  Loop "' + $LoopName + '" (' + $rc + 'x G29, CSV + round comparison + Min/Max/Avg). Esc / Strg+C = Cancel') -ForegroundColor Cyan
         Write-Host ''
         Invoke-LevelCompareLoop -Port $Port -RepeatCount $rc -InitCmds $init -UseG29T $useG29T
         return
@@ -466,7 +481,7 @@ function Invoke-Loop {
         $bt = if ($null -ne $entry.bedTemp) { [int]$entry.bedTemp } else { 60 }
         $nt = if ($null -ne $entry.nozzleTemp) { [int]$entry.nozzleTemp } else { 170 }
         $stab = if ($null -ne $entry.stabilizationSeconds) { [int]$entry.stabilizationSeconds } else { 0 }
-        Write-Host '  Interactive Bed Leveling. Esc=Exit, Enter=Remeasure' -ForegroundColor Cyan
+        Write-Host '  Interactive Bed Leveling. Esc / Strg+C = Exit, Enter = Remeasure' -ForegroundColor Cyan
         Write-Host ''
         Invoke-InteractiveBedLevelLoop -Port $Port -BedTemp $bt -NozzleTemp $nt -StabilizationSeconds $stab
         return
@@ -490,7 +505,7 @@ function Invoke-Loop {
     $startTemp = if ($entry -is [hashtable] -and $null -ne $entry.startTemp) { [int]$entry.startTemp } else { $null }
     $stepTemp  = if ($entry -is [hashtable] -and $null -ne $entry.stepTemp)  { [int]$entry.stepTemp }  else { $null }
     $iterInfo = if ($RepeatCount -gt 1) { " $RepeatCount`x" } else { "" }
-    Write-Host ('  Loop "' + $LoopName + '" (' + $cmds.Count + ' commands' + $iterInfo + '). Esc=Cancel') -ForegroundColor Cyan
+    Write-Host ('  Loop "' + $LoopName + '" (' + $cmds.Count + ' commands' + $iterInfo + '). Esc / Strg+C = Cancel') -ForegroundColor Cyan
     Write-Host ''
     foreach ($ic in $initCmds) {
         $ic = $ic.Trim(); if (-not $ic) { continue }

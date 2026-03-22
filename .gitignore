@@ -1,0 +1,3 @@
+# 3DP-Console: lokale Messergebnisse und Serielles Cache (nicht versionieren)
+src/BedLevelResults/
+src/.serialports_cache

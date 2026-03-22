@@ -38,6 +38,7 @@ function Invoke-MainCommandLineModeCore {
     try {
         $port = & $NewPortScript $ChosenPort
         $port.Open()
+        Start-3DPConsoleSessionTranscript -ComPort $ChosenPort
         Write-Host ('  Connected to ' + $ChosenPort + ' -> ' + $CommandLine.Trim()) -ForegroundColor Cyan
         & $RunCommandScript $port $CommandLine
     } catch {
@@ -65,4 +66,78 @@ function Invoke-MainCommandLineMode {
     return Invoke-MainCommandLineModeCore -ChosenPort $chosenPort -CommandLine $CommandLine `
         -NewPortScript { param($n) New-3DPConsoleSerialPort -PortName $n } `
         -RunCommandScript $runSingle
+}
+
+# Leerzeilen und #-Kommentare entfernen (Unit-Testbar).
+function Get-3DPConsoleNormalizedBatchCommandLines {
+    param([string[]]$RawLines)
+    if ($null -eq $RawLines) { return [string[]]@() }
+    $out = [System.Collections.Generic.List[string]]::new()
+    foreach ($raw in $RawLines) {
+        if ($null -eq $raw) { continue }
+        $t = $raw.Trim()
+        if (-not $t) { continue }
+        if ($t.StartsWith('#')) { continue }
+        $out.Add($t)
+    }
+    return [string[]]$out.ToArray()
+}
+
+function Invoke-MainCommandBatchModeDefaultRun {
+    param(
+        $Port,
+        [string[]]$Cmds
+    )
+    foreach ($c in $Cmds) {
+        if (-not (Invoke-SingleCommand -Port $Port -Cmd $c)) { return 1 }
+    }
+    return 0
+}
+
+function Invoke-MainCommandBatchModeCore {
+    param(
+        [string[]]$NormalizedCommands,
+        [string]$ChosenPort,
+        [scriptblock]$NewPortScript,
+        [scriptblock]$RunBatchScript
+    )
+    $port = $null
+    try {
+        $port = & $NewPortScript $ChosenPort
+        $port.Open()
+        Start-3DPConsoleSessionTranscript -ComPort $ChosenPort
+        $exit = & $RunBatchScript $port $NormalizedCommands
+        return [int]$exit
+    } catch {
+        Write-Host ('  Error: ' + $_.Exception.Message) -ForegroundColor Red
+        return 1
+    } finally {
+        if ($port -and $port.IsOpen) { try { $port.Close(); $port.Dispose() } catch { } }
+    }
+}
+
+function Invoke-MainCommandBatchMode {
+    param(
+        [string[]]$RawLines,
+        [string]$ConfigPath
+    )
+    $cmds = @(Get-3DPConsoleNormalizedBatchCommandLines -RawLines $RawLines)
+    if ($cmds.Count -eq 0) {
+        Write-Host '  Error: No commands in batch (empty stdin/file or only blanks/comments).' -ForegroundColor Red
+        return 1
+    }
+    $chosenPort = Get-PortOrRetry -ConfigPath $ConfigPath -ForceShowSelection:$false
+    if (-not $chosenPort) {
+        Write-Host '  Error: No COM port available.' -ForegroundColor Red
+        return 1
+    }
+    $runBatch = if ($null -ne $global:3DPConsoleMainCommandBatchRunScript) {
+        $global:3DPConsoleMainCommandBatchRunScript
+    } else {
+        { param($p, $a) Invoke-MainCommandBatchModeDefaultRun -Port $p -Cmds $a }
+    }
+    Write-Host ('  Batch: ' + $cmds.Count + ' command(s)') -ForegroundColor DarkGray
+    return Invoke-MainCommandBatchModeCore -NormalizedCommands $cmds -ChosenPort $chosenPort `
+        -NewPortScript { param($n) New-3DPConsoleSerialPort -PortName $n } `
+        -RunBatchScript $runBatch
 }
