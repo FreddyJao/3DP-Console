@@ -30,6 +30,9 @@
 .PARAMETER TestTemp2
     If set, runs optional temp2_nozzle minimal loop. Pass-through to Test-All.ps1.
 
+.PARAMETER TestExtraQuickActions
+    QuickActions dw, bw (M109/M190 wait; not with -SkipHeating). With -SkipLong still on, also QuickAction level (G29). Pass-through to Test-All.ps1.
+
 .PARAMETER DryRun
     Does not call Test-All.ps1. Prints the parameter bundle that would be passed (and runs COM check unless -SkipPortCheck).
 
@@ -71,6 +74,7 @@ param(
     [switch]$SkipHeating,
     [switch]$TestM112,
     [switch]$TestTemp2,
+    [switch]$TestExtraQuickActions,
     [switch]$DryRun,
     [switch]$SkipPortCheck
 )
@@ -85,7 +89,8 @@ function Get-IntegrationTestAllSplat {
         [bool]$SkipLong,
         [switch]$SkipHeating,
         [switch]$TestM112,
-        [switch]$TestTemp2
+        [switch]$TestTemp2,
+        [switch]$TestExtraQuickActions
     )
     $h = @{
         WithPort    = $true
@@ -96,6 +101,7 @@ function Get-IntegrationTestAllSplat {
     if ($TestLevelCompare.IsPresent) { $h['TestLevelCompare'] = $true }
     if ($TestM112) { $h['TestM112'] = $true }
     if ($TestTemp2) { $h['TestTemp2'] = $true }
+    if ($TestExtraQuickActions) { $h['TestExtraQuickActions'] = $true }
     return $h
 }
 
@@ -123,7 +129,7 @@ if (-not ($DryRun -and $SkipPortCheck)) {
     Write-Host "SkipPortCheck: COM probe skipped." -ForegroundColor DarkGray
 }
 
-$testParams = Get-IntegrationTestAllSplat -ComPort $ComPort -TestLevelCompare:$TestLevelCompare -SkipLong $SkipLong -SkipHeating:$SkipHeating -TestM112:$TestM112 -TestTemp2:$TestTemp2
+$testParams = Get-IntegrationTestAllSplat -ComPort $ComPort -TestLevelCompare:$TestLevelCompare -SkipLong $SkipLong -SkipHeating:$SkipHeating -TestM112:$TestM112 -TestTemp2:$TestTemp2 -TestExtraQuickActions:$TestExtraQuickActions
 
 $parts = @()
 if ($TestLevelCompare.IsPresent) { $parts += 'TestLevelCompare (level_compare 2, ~10+ min)' } else { $parts += 'no TestLevelCompare (opt-in: -TestLevelCompare)' }
@@ -131,6 +137,7 @@ if (-not $SkipLong) { $parts += 'SkipLong off (G29, long loops)' } else { $parts
 if ($SkipHeating) { $parts += 'SkipHeating' }
 if ($TestM112) { $parts += 'TestM112' }
 if ($TestTemp2) { $parts += 'TestTemp2' }
+if ($TestExtraQuickActions) { $parts += 'TestExtraQuickActions (dw, bw[, level if SkipLong])' }
 $msg = $parts -join '; '
 
 if ($DryRun) {
@@ -144,6 +151,7 @@ if ($DryRun) {
     if ($TestLevelCompare.IsPresent) { $argList += '-TestLevelCompare' }
     if ($TestM112) { $argList += '-TestM112' }
     if ($TestTemp2) { $argList += '-TestTemp2' }
+    if ($TestExtraQuickActions) { $argList += '-TestExtraQuickActions' }
     Write-Host ('  .\src\tests\Test-All.ps1 ' + ($argList -join ' ')) -ForegroundColor DarkGray
     Write-Host "  For unit tests + integration plan only (no hardware [7]): .\src\tests\Test-All.ps1 -IntegrationPlanOnly -ComPort $ComPort ..." -ForegroundColor DarkGray
     exit 0
@@ -151,5 +159,5 @@ if ($DryRun) {
 
 Write-Host ""
 Write-Host "Starting integration tests ($msg)..." -ForegroundColor Cyan
-Write-Host ('  Coverage: ' + (Join-Path $RepoRoot 'tests\TEST-COVERAGE.de.md')) -ForegroundColor DarkGray
+Write-Host ('  Coverage: ' + (Join-Path $PSScriptRoot 'TEST-COVERAGE.de.md')) -ForegroundColor DarkGray
 & (Join-Path $PSScriptRoot "Test-All.ps1") @testParams

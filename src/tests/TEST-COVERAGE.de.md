@@ -71,8 +71,11 @@ COM-Port anpassen (`COM5` ist Standard in `src\tests\Test-All.ps1`).
 | **`Invoke-Temp2LevelingLoop`** (über `Invoke-Loop` + Minimal-Config) und damit **`Read-SerialAndCapture`** | `.\src\tests\Test-All.ps1 -WithPort -ComPort COM5 -TestTemp2` | `.\src\tests\Run-Integration-Tests.ps1 -ComPort COM5 -TestTemp2` |
 | **`Invoke-Loop`** inkl. **`prepare`**, **`level_rehome_once`**, **`temp_ramp`**, **`/level`** (G29), **G29 T** | `.\src\tests\Test-All.ps1 -WithPort -ComPort COM5 -SkipLong:$false` | `.\src\tests\Run-Integration-Tests.ps1 -ComPort COM5 -SkipLong:$false` |
 | **`Send-Gcode`** mit **M112** wirklich zum Drucker (**Not-Aus** – Vorsicht!) | `.\src\tests\Test-All.ps1 -WithPort -ComPort COM5 -TestM112` | `.\src\tests\Run-Integration-Tests.ps1 -ComPort COM5 -TestM112` |
+| **QuickActions `dw` / `bw`** (M109/M190 mit Wartezeit) und bei **`-SkipLong` noch an** zusätzlich **QuickAction `level`** (G29) | `.\src\tests\Test-All.ps1 -WithPort -ComPort COM5 -TestExtraQuickActions` (ohne `-SkipHeating` für dw/bw) | `.\src\tests\Run-Integration-Tests.ps1 -ComPort COM5 -TestExtraQuickActions` |
 
 **Hinweis:** Standard ist `-SkipLong:$true`. Ohne `-SkipLong:$false` laufen die langen G29-/Loop-Blöcke in Abschnitt **[7]** nicht. **`src\tests\Run-Integration-Tests.ps1`** startet standardmäßig **ohne** `-TestLevelCompare` (wie `src\tests\Test-All.ps1 -WithPort`); lange Level-Compare-Integration ist **opt-in** mit `-TestLevelCompare`.
+
+**[7a] Batch-CLI** (Subprozess, **vor** dem Öffnen des Testskript-SerialPorts): `3DP-Console.ps1 -CommandFile` (temporäre Datei: `M105`, `temp`) und Pipeline `-StdinCommands` — **Baseline** bei jedem `-WithPort`-Lauf (kein eigener Schalter).
 
 ---
 
@@ -125,30 +128,32 @@ Im Skript: ``Write-Host "`n=== [7] Integration $intComPort ==="`` (Platzhalter =
 Voraussetzung: **`WithPort`** und **nicht** **`IntegrationPlanOnly`**, und SerialPort lässt sich öffnen.  
 Zuerst: **`Write-IntegrationCoveragePlan`** (nur Text). Dann **Reihenfolge** der Integrationstests wie im Skript (Auszug mit **Test-Name**-Titeln):
 
-1. **CLI:** `3DP-Console.ps1 -Command temp` → **`Invoke-SingleCommand`** / Port-Pfad. (Batch `-CommandFile`/`-StdinCommands`: **manuell** / CI — nicht in **[7]**-Baseline.)  
-2. **`Invoke-SingleCommand`** `temp`, **`Invoke-SingleCommand`** `M105`.  
-3. **M105, M114, M115** über **`Send-Gcode`** + **`Read-SerialResponse`**.  
-4. **`Invoke-SdLs`** (`/ls`).  
-5. **`Send-Gcode`** mit **`HostCommandCallback`** (`;@test` + M105).  
-6. **`Invoke-Macro`** `preheat 0`.  
-7. Wenn **nicht** `-SkipHeating`: **`/pla`, `/abs`, `/duese`, `/bett`, `/off`** (jeweils **`Send-Gcode`** + **`Read-SerialResponse`**).  
-8. **`/fan`** (M107), **`/motoren`** (M17).  
-9. **`Invoke-HomeAxes`** `""` (G28+E).  
-10. **`Invoke-SdPrint`** (Testdatei `__test_ni.g`).  
-11. Wenn **nicht** `-SkipLong`: **`/level`** (G29), QuickAction **level**, **G29 T**, **`Invoke-Loop`** `prepare`, `level_rehome_once` (1× und 2×), `temp_ramp` (2×).  
-12. **`Invoke-HomeAxes`** `e`.  
-13. Wenn **nicht** `-SkipHeating`: **`Invoke-Move`**, **`Invoke-Extrude`**, **`Invoke-Reverse`**, **`Invoke-HomeAxes`** `xy`.  
-14. **„Invoke-Monitor (2 Zyklen)“** — im Skript **kein** Aufruf von **`Invoke-Monitor`**: es wird **`$port.WriteLine('M105')`** + **`ReadExisting`** + **`Format-TemperatureReport`** verwendet (Monitor-**ähnlich**, anderer Codepfad).  
-15. **`Invoke-Loop`** `cooldown`.  
-16. QuickActions **`d`, `b`, `off`, `fan`, `home`, `temp`** (nicht `dw`/`bw`/`level` in dieser Schleife).  
-17. Palette **G28** und **M105** senden.  
-18. **M112** mit gemocktem **`Invoke-Confirm`** = ablehnen → **`Send-Gcode`** sendet M112 **nicht**.  
-19. Optional **`-TestLevelCompare`**: **`Invoke-LevelCompareLoop`** (2×), CSV-Prüfung.  
-20. Optional **`-TestTemp2`**: minimal überschriebene Config, **`Invoke-Loop`** `temp2_nozzle`, CSV-Prüfung (im Skript-Kommentar ca. **8 Min** bei einem Schritt).  
-21. **Quit-Logik:** M104/M140 S0.  
-22. Optional **`-TestM112`**: **`Invoke-Confirm`** = zu → **`Send-Gcode`** M112 wirklich.
+1. **CLI:** `3DP-Console.ps1 -Command temp` → **`Invoke-SingleCommand`** / Port-Pfad.  
+2. **[7a] Batch-CLI (Subprozess):** `3DP-Console.ps1 -CommandFile` (Temp-Datei: `M105`, `temp`) und Pipeline **`-StdinCommands`** — jeweils eigenes COM-Öffnen **vor** dem Parent-`SerialPort` in `Test-All.ps1` → **`Invoke-MainCommandBatchMode`** / **`Invoke-SingleCommand`**.  
+3. **`Invoke-SingleCommand`** `temp`, **`Invoke-SingleCommand`** `M105`.  
+4. **M105, M114, M115** über **`Send-Gcode`** + **`Read-SerialResponse`**.  
+5. **`Invoke-SdLs`** (`/ls`).  
+6. **`Send-Gcode`** mit **`HostCommandCallback`** (`;@test` + M105).  
+7. **`Invoke-Macro`** `preheat 0`.  
+8. Wenn **nicht** `-SkipHeating`: **`/pla`, `/abs`, `/duese`, `/bett`, `/off`** (jeweils **`Send-Gcode`** + **`Read-SerialResponse`**).  
+9. **`/fan`** (M107), **`/motoren`** (M17).  
+10. **`Invoke-HomeAxes`** `""` (G28+E).  
+11. **`Invoke-SdPrint`** (Testdatei `__test_ni.g`).  
+12. Wenn **nicht** `-SkipLong`: **`/level`** (G29), QuickAction **level**, **G29 T**, **`Invoke-Loop`** `prepare`, `level_rehome_once` (1× und 2×), `temp_ramp` (2×).  
+13. **`Invoke-HomeAxes`** `e`.  
+14. Wenn **nicht** `-SkipHeating`: **`Invoke-Move`**, **`Invoke-Extrude`**, **`Invoke-Reverse`**, **`Invoke-HomeAxes`** `xy`.  
+15. **`Invoke-Monitor`** (eine Runde): mit **`THREEDP_CONSOLE_SKIP_MAIN=1`** bricht die Funktion nach **einem** M105-/Lesezyklus ab (kurzes Intervall über **`-Args`**).  
+16. **`Invoke-Loop`** `cooldown`.  
+17. QuickActions **`d`, `b`, `off`, `fan`, `home`, `temp`**.  
+18. Optional **`-TestExtraQuickActions`**: QuickActions **`dw`**, **`bw`** (nur ohne **`-SkipHeating`**); wenn **`-SkipLong`** noch **an**, zusätzlich QuickAction **`level`** (G29) — bei **`-SkipLong:$false`** entfällt letzteres (dort schon Schritt 12).  
+19. Palette **G28** und **M105** senden.  
+20. **M112** mit gemocktem **`Invoke-Confirm`** = ablehnen → **`Send-Gcode`** sendet M112 **nicht**.  
+21. Optional **`-TestLevelCompare`**: **`Invoke-LevelCompareLoop`** (2×), CSV-Prüfung.  
+22. Optional **`-TestTemp2`**: minimal überschriebene Config, **`Invoke-Loop`** `temp2_nozzle`, CSV-Prüfung (im Skript-Kommentar ca. **8 Min** bei einem Schritt).  
+23. **Quit-Logik:** M104/M140 S0.  
+24. Optional **`-TestM112`**: **`Invoke-Confirm`** = zu → **`Send-Gcode`** M112 wirklich.
 
-Bei **`-IntegrationPlanOnly`** (mit oder ohne **`-WithPort`**) erscheint nur die Überschrift **[7]** + **Integrations-Plan** + Hinweis, dass **kein** Port geöffnet wird — die Schritte 1–22 entfallen.
+Bei **`-IntegrationPlanOnly`** (mit oder ohne **`-WithPort`**) erscheint nur die Überschrift **[7]** + **Integrations-Plan** + Hinweis, dass **kein** Port geöffnet wird — die Schritte 1–24 entfallen.
 
 ### Optional: Pester + CodeCoverage (`src\tests\`)
 
@@ -157,7 +162,7 @@ Bei **`-IntegrationPlanOnly`** (mit oder ohne **`-WithPort`**) erscheint nur die
 | **`Invoke-GcodeAndWaitOrAbort`** ohne echten `SerialPort` | `src\tests\3DP-Console.Pester.Tests.ps1`: **Mock** von `Send-Gcode` / `Read-SerialResponse`. Start: `.\src\tests\Run-Pester.ps1` |
 | **`Get-GcodeTimeout`** (Sanity) | Derselbe Pester-Block nach Dot-Source von `3DP-Console.ps1`. |
 | **Messbare %** auf `lib\*.ps1` + `3DP-Console.ps1` | `Run-Pester.ps1` mit **CodeCoverage** (ohne `-NoCodeCoverage`). Benötigt **Pester 5+** (`Install-Module`). Stand z. B. **~42 %** Command-Coverage bei **123** Pester-Tests (Zielvorgabe Pester: 75 % — siehe Fahrplan unten). |
-| **Pester-Umfang** | u. a. `Invoke-3DPConsoleParseEarlyArgs` (inkl. `-CommandFile`/`-StdinCommands`) / `Write-3DPConsole*Screen`, **`Get-3DPConsoleNormalizedBatchCommandLines`**, **`Invoke-MainCommandBatchModeCore`** (Mock), **`Get-PortOrRetry`** (Mock `Get-AvailableComPorts`/`Read-Host`), Mesh/UI, `Send-Gcode`, `Invoke-SingleCommand`/`Invoke-Loop`/`Invoke-LevelCompareLoop` (stark gemockt), `Get-GcodeTimeout`, `Write-ListLines`, Config/COM-Helfer, `Invoke-GcodeAndWaitOrAbort` (Mock). **`Invoke-CommandPalette`/`Render-Palette`** bewusst nicht per Test-Queue (hängt im Pester-Host). |
+| **Pester-Umfang** | u. a. `Invoke-3DPConsoleParseEarlyArgs` (inkl. `-CommandFile`/`-StdinCommands`) / `Write-3DPConsole*Screen`, **`Get-3DPConsoleNormalizedBatchCommandLines`**, **`Invoke-MainCommandBatchModeCore`** (Mock), **`Get-PortOrRetry`** (Mock `Get-AvailableComPorts`/`Read-Host`), Mesh/UI, `Send-Gcode`, `Invoke-SingleCommand`/`Invoke-Loop`/`Invoke-LevelCompareLoop` (stark gemockt), `Get-GcodeTimeout`, `Write-ListLines`, Config/COM-Helfer, `Invoke-GcodeAndWaitOrAbort` (Mock). Echter Batch mit COM: **Integration [7a]** in `Test-All.ps1`. **`Invoke-CommandPalette`/`Render-Palette`** bewusst nicht per Test-Queue (hängt im Pester-Host). |
 | `Read-SerialAndCapture`, vollständiges **`Send-Gcode`** inkl. `WriteLine` | Weiterhin **Integration** (`-WithPort` + ggf. `-TestLevelCompare` / `-TestTemp2`) oder später Refactor; siehe `src\tests\README.md`. |
 
 #### Fahrplan Pester: von ~42 % Richtung ~75 % (Command-Coverage)
@@ -198,7 +203,7 @@ Spalte **Stufe** verwendet die Legende oben. **Unterart** nur bei **Kein Auto-Te
 | `Invoke-Move` | Direkt | Integration [7] (ohne `-SkipHeating`). |
 | `Invoke-Extrude` | Direkt | Integration [7] (ohne `-SkipHeating`). |
 | `Invoke-Reverse` | Direkt | Integration [7] (ohne `-SkipHeating`). |
-| `Invoke-Monitor` | Kein Auto-Test · Szenario fehlt (Funktion) | In **[7]** heißt ein Test „Invoke-Monitor (2 Zyklen)“, ruft aber **`Invoke-Monitor` nicht auf** — stattdessen **`SerialPort.WriteLine('M105')`** + **`Format-TemperatureReport`**. Slash-Command **`/monitor`** ist nur in **[6]** als Eintrag geprüft. |
+| `Invoke-Monitor` | Direkt | Integration **[7]**: **`Invoke-Monitor`** mit **`THREEDP_CONSOLE_SKIP_MAIN=1`** (eine Runde M105/Lesen, kurzes Intervall). Slash-Command **`/monitor`** weiter in **[6]** als Eintrag geprüft. |
 | `Invoke-SdLs` | Direkt | Integration [7]. |
 | `Invoke-SdPrint` | Direkt | Integration [7]. |
 | `Invoke-Macro` | Direkt | Integration [7]. |
@@ -222,7 +227,7 @@ Spalte **Stufe** verwendet die Legende oben. **Unterart** nur bei **Kein Auto-Te
 | Funktion | Stufe | Unterart / Kurz-Hinweis |
 |----------|-------|-------------------------|
 | `Get-GcodeTimeout` | Direkt | Unit [1] + Integration (Timeouts) + optional Pester-Sanity in `3DP-Console.Pester.Tests.ps1`. |
-| `Format-TemperatureReport` | Direkt | Unit [5] + Integration (Monitor). |
+| `Format-TemperatureReport` | Direkt | Unit [5] + Integration (**`Invoke-Monitor`** [7]). |
 | `Parse-MeshLineToNumbers` | Direkt | Unit [6i]. |
 | `Parse-MeshFromG29Output` | Direkt | Unit [6d]. |
 | `Get-MeshCellColor` | Direkt | Unit [6f]. |
@@ -273,7 +278,7 @@ Spalte **Stufe** verwendet die Legende oben. **Unterart** nur bei **Kein Auto-Te
 | `New-3DPConsoleSerialPort` | Teilweise | Wird vom `-Command`-Pfad genutzt; **Pester-CodeCoverage** zählt diese Datei. |
 | `Invoke-MainCommandLineMode` | Direkt + Teilweise | **Pester:** kein Port / Open wirft → Exitcode **1**. Erfolgspfad mit echtem COM: **Integration** (`3DP-Console.ps1 -Command …`). |
 | `Get-3DPConsoleNormalizedBatchCommandLines` | Direkt | Unit **[6l]** + **Pester**. |
-| `Invoke-MainCommandBatchMode` / `Invoke-MainCommandBatchModeCore` / `Invoke-MainCommandBatchModeDefaultRun` | Direkt + Teilweise | **Pester:** `Invoke-MainCommandBatchModeCore` mit Mock-Port. **Teilweise:** vollständiger Batch mit echtem COM = **manuell** oder CI (`-CommandFile` / Pipeline). |
+| `Invoke-MainCommandBatchMode` / `Invoke-MainCommandBatchModeCore` / `Invoke-MainCommandBatchModeDefaultRun` | Direkt + Teilweise | **Pester:** `Invoke-MainCommandBatchModeCore` mit Mock-Port. **Integration [7a]:** Subprozess `3DP-Console.ps1` mit **`-CommandFile`** und **`-StdinCommands`** (echtes COM). |
 
 **Hinweis Pester CodeCoverage:** `Run-Pester.ps1` misst **nicht** `3DP-Console.Main.ps1`, `3DP-Console.PaletteUI.ps1`, `3DP-Console.Init.ps1` und `3DP-Console.Serial.ps1` (UI, Bootstrap, serielle I/O-Schleifen). Die Prozentzahl bezieht sich auf die übrigen **6** Fragmente + `3DP-Console.ps1`; Stand zuletzt **über 70 %** (ca. **77 %**).
 

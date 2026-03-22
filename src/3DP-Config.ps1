@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Configuration for 3DP-Console.
 

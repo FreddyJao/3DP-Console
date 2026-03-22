@@ -18,6 +18,7 @@
     -TestLevelCompare — Invoke-LevelCompareLoop, Read-SerialAndCapture (~10+ min)
     -TestTemp2        — Invoke-Temp2LevelingLoop via Invoke-Loop (~10 min)
     -TestM112         — actually send M112 after confirm (EMERGENCY STOP — dangerous)
+    -TestExtraQuickActions — QuickActions dw, bw (M109/M190 wait; requires heating tests). If -SkipLong, also QuickAction level (G29, long).
 
 .PARAMETER WithPort
     Enables integration tests with real printer via serial port.
@@ -42,6 +43,9 @@
 
 .PARAMETER IntegrationPlanOnly
     After unit tests, prints the integration coverage plan (see TEST-COVERAGE.de.md) and skips section [7] (no serial open). Use with -WithPort flags mentally omitted; you can pass -ComPort for the plan line. Implies no hardware.
+
+.PARAMETER TestExtraQuickActions
+    Integration [7]: run QuickActions dw, bw (not with -SkipHeating). If -SkipLong is still on, also run QuickAction level (G29, same duration as /level).
 
 .EXAMPLE
     .\src\tests\Test-All.ps1
@@ -78,6 +82,7 @@ param(
     [switch]$TestM112,
     [switch]$TestLevelCompare,
     [switch]$TestTemp2,
+    [switch]$TestExtraQuickActions,
     [string]$ComPort = "COM5",
     [switch]$IntegrationPlanOnly
 )
@@ -124,7 +129,8 @@ function Write-IntegrationCoveragePlan {
         [switch]$SkipHeating,
         [switch]$TestLevelCompare,
         [switch]$TestTemp2,
-        [switch]$TestM112
+        [switch]$TestM112,
+        [switch]$TestExtraQuickActions
     )
     Write-Host ""
     Write-Host "  --- Integration-Plan (TEST-COVERAGE.de.md: Direkt / Bedingt) ---" -ForegroundColor DarkCyan
@@ -149,6 +155,17 @@ function Write-IntegrationCoveragePlan {
     if ($TestM112) {
         Write-Host "  TestM112: M112 wirklich senden (Not-Aus!)" -ForegroundColor Red
     }
+    if ($TestExtraQuickActions) {
+        Write-Host "  TestExtraQuickActions: dw, bw (M109/M190, lang ohne -SkipHeating)" -ForegroundColor Yellow
+        if ($SkipLong) {
+            Write-Host "  + QuickAction level (G29) weil SkipLong=ON" -ForegroundColor Yellow
+        } else {
+            Write-Host "  QuickAction level: bereits durch -SkipLong:`$false abgedeckt" -ForegroundColor DarkGray
+        }
+    } else {
+        Write-Host "  ohne -TestExtraQuickActions: keine QuickActions dw, bw[, level bei SkipLong]" -ForegroundColor DarkGray
+    }
+    Write-Host "  [7a] Batch-CLI: Subprozess -CommandFile / -StdinCommands (vor parent COM-Open)" -ForegroundColor DarkGray
     Write-Host "  Kein Auto-Test: Main, Get-PortOrRetry-Menue, Invoke-InteractiveBedLevelLoop (manuell)" -ForegroundColor DarkGray
     Write-Host "  --- Ende Plan ---" -ForegroundColor DarkCyan
 }
@@ -774,13 +791,42 @@ if ($WithPort -or $IntegrationPlanOnly) {
     $intComPort = $TestComPort
     if (-not $intComPort) { $intComPort = "COM5" }
     Write-Host "`n=== [7] Integration $intComPort ===" -ForegroundColor Cyan
-    Write-IntegrationCoveragePlan -ComPortLabel $intComPort -SkipLong $SkipLong -SkipHeating:$SkipHeating -TestLevelCompare:$TestLevelCompare -TestTemp2:$TestTemp2 -TestM112:$TestM112
+    Write-IntegrationCoveragePlan -ComPortLabel $intComPort -SkipLong $SkipLong -SkipHeating:$SkipHeating -TestLevelCompare:$TestLevelCompare -TestTemp2:$TestTemp2 -TestM112:$TestM112 -TestExtraQuickActions:$TestExtraQuickActions
     if ($IntegrationPlanOnly) {
         Write-Host "  IntegrationPlanOnly: Abschnitt [7] wird nicht ausgefuehrt (kein Hardware-Open)." -ForegroundColor Yellow
     }
 }
 
 if ($WithPort -and -not $IntegrationPlanOnly) {
+    $consoleScript = Join-Path $ProjectRoot "3DP-Console.ps1"
+    Write-Host "`n  --- [7a] Batch-CLI (Subprozess: -CommandFile / -StdinCommands) ---" -ForegroundColor DarkCyan
+    Write-Host "  (Laeuft vor Oeffnen des Parent-SerialPort: COM ist exklusiv.)" -ForegroundColor DarkGray
+    $tmpBatch = Join-Path $env:TEMP ('3dp_test_batch_{0}.txt' -f ([Guid]::NewGuid().ToString('n')))
+    try {
+        @(
+            '# integration [7a]'
+            'M105'
+            'temp'
+        ) | Set-Content -LiteralPath $tmpBatch -Encoding UTF8
+
+        Test-Name "Subprocess -CommandFile (M105 + temp)" {
+            $out = & $consoleScript -ComPort $intComPort -CommandFile $tmpBatch 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "Expected exit 0, got $LASTEXITCODE" }
+            $s = $out | Out-String
+            if ($s -notmatch '\[OK\]|Connected') { throw "Expected Connected or [OK] in output, got: $s" }
+        }
+
+        Test-Name "Subprocess -StdinCommands (M105 + temp)" {
+            $out = @('M105', 'temp') | & $consoleScript -ComPort $intComPort -StdinCommands 2>&1
+            if ($LASTEXITCODE -ne 0) { throw "Expected exit 0, got $LASTEXITCODE" }
+            $s = $out | Out-String
+            if ($s -notmatch '\[OK\]|Connected') { throw "Expected Connected or [OK] in output, got: $s" }
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $tmpBatch) { Remove-Item -LiteralPath $tmpBatch -Force -ErrorAction SilentlyContinue }
+    }
+
     $port = $null
     try {
         $port = New-Object System.IO.Ports.SerialPort $intComPort, $Script:Config.BaudRate, None, 8, One
@@ -968,18 +1014,9 @@ if ($WithPort -and -not $IntegrationPlanOnly) {
             Write-Host "  (SkipHeating: move, extrude, reverse, home skipped)" -ForegroundColor DarkGray
         }
 
-        Test-Name "Invoke-Monitor (2 Zyklen)" {
-            $end = (Get-Date).AddSeconds(3)
-            while ((Get-Date) -lt $end) {
-                $port.WriteLine('M105')
-                Start-Sleep -Milliseconds 800
-                if ($port.BytesToRead -gt 0) {
-                    $raw = $port.ReadExisting()
-                    $fmt = $raw -split "[\r\n]+" | ForEach-Object { Format-TemperatureReport -Line $_ } | Where-Object { $_ }
-                    if ($fmt) { break }
-                }
-                Start-Sleep -Seconds 1
-            }
+        # Invoke-Monitor: bei THREEDP_CONSOLE_SKIP_MAIN=1 eine Runde M105+Read, dann Abbruch (siehe Commands.ps1)
+        Test-Name "Invoke-Monitor (eine Runde, SKIP_MAIN)" {
+            Invoke-Monitor -Port $port -Args "0.1"
         }
 
         Test-Name "Loop cooldown" {
@@ -994,6 +1031,34 @@ if ($WithPort -and -not $IntegrationPlanOnly) {
                 $lc = Send-Gcode -Port $port -Gcode $q.gcode
                 $ok = Read-SerialResponse -Port $port -Ms (Get-GcodeTimeout $q.gcode) -ExpectedOkCount $lc
                 if (-not $ok) { throw "No response" }
+            }
+        }
+
+        if ($TestExtraQuickActions) {
+            Write-Host "`n  --- QuickActions extra (-TestExtraQuickActions) ---" -ForegroundColor DarkCyan
+            if (-not $SkipHeating) {
+                foreach ($qaKey in @('dw', 'bw')) {
+                    Test-Name "QuickAction $qaKey send (M109/M190 wait)" {
+                        $q = $Script:QuickActions | Where-Object { $_.key -eq $qaKey } | Select-Object -First 1
+                        if (-not $q) { throw "QuickAction $qaKey not found" }
+                        $lc = Send-Gcode -Port $port -Gcode $q.gcode
+                        $ok = Read-SerialResponse -Port $port -Ms (Get-GcodeTimeout $q.gcode) -ExpectedOkCount $lc
+                        if (-not $ok) { throw "No response" }
+                    }
+                }
+            } else {
+                Write-Host '  (SkipHeating: dw, bw skipped - ohne -SkipHeating)' -ForegroundColor DarkGray
+            }
+            if ($SkipLong) {
+                Test-Name "QuickAction level (G29, TestExtraQuickActions)" {
+                    $q = $Script:QuickActions | Where-Object { $_.key -eq 'level' } | Select-Object -First 1
+                    if (-not $q) { throw "QuickAction level not found" }
+                    $lc = Send-Gcode -Port $port -Gcode $q.gcode
+                    $ok = Read-SerialResponse -Port $port -Ms 300000 -ExpectedOkCount $lc
+                    if (-not $ok) { throw "No response" }
+                }
+            } else {
+                Write-Host "  (SkipLong off: QuickAction level already in G29-Block oben)" -ForegroundColor DarkGray
             }
         }
 
@@ -1105,7 +1170,7 @@ if ($fail -gt 0) {
 Write-Host "  All tests passed" -ForegroundColor Green
 if (-not $WithPort) {
     Write-Host ('  Tip: -WithPort for integration tests with ' + $TestComPort) -ForegroundColor DarkGray
-    Write-Host ('  Checklist: ' + (Join-Path $ProjectRoot 'tests\TEST-COVERAGE.de.md') + ' (which lib functions each run exercises)') -ForegroundColor DarkGray
+    Write-Host ('  Checklist: ' + (Join-Path $PSScriptRoot 'TEST-COVERAGE.de.md') + ' (which lib functions each run exercises)') -ForegroundColor DarkGray
     if ($IntegrationPlanOnly) {
         Write-Host '  Note: -IntegrationPlanOnly: Abschnitt [7] nicht ausgefuehrt (nur Plan oben).' -ForegroundColor DarkGray
     }
@@ -1114,5 +1179,6 @@ if (-not $WithPort) {
     if (-not $TestM112) { Write-Host '  Tip: -TestM112 to actually send M112 (EMERGENCY STOP)' -ForegroundColor DarkGray }
     if (-not $TestLevelCompare) { Write-Host '  Tip: -TestLevelCompare for loop level_compare 2 (approx. 10+ min)' -ForegroundColor DarkGray }
     if (-not $TestTemp2) { Write-Host '  Tip: -TestTemp2 for loop temp2_nozzle (2 steps, approx. 10 min)' -ForegroundColor DarkGray }
-    Write-Host ('  Coverage notes: ' + (Join-Path $ProjectRoot 'tests\TEST-COVERAGE.de.md')) -ForegroundColor DarkGray
+    if (-not $TestExtraQuickActions) { Write-Host '  Tip: -TestExtraQuickActions for QuickActions dw, bw (heat wait) and level (G29) when -SkipLong' -ForegroundColor DarkGray }
+    Write-Host ('  Coverage notes: ' + (Join-Path $PSScriptRoot 'TEST-COVERAGE.de.md')) -ForegroundColor DarkGray
 }
