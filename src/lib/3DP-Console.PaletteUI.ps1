@@ -43,6 +43,33 @@ function Get-DescLongLineCount {
     return (Split-UITextToLines -Text $longClean -MaxWidth $wrapW).Count
 }
 
+# Zeilenanzahl des Listenteils (wie Write-ListLines + eine Fußzeile „Tab=…“) — für partielles Neuzeichnen.
+function Get-PaletteListBlockLineCount {
+    param([array]$Items, [int]$SelectedIndex, [int]$LineLen)
+    if ($Items.Count -eq 0) { return 0 }
+    $safeSel = [Math]::Max(0, [Math]::Min($SelectedIndex, $Items.Count - 1))
+    $maxShow = [Math]::Min($Items.Count, $Script:MaxVisibleItems)
+    $scrollOffset = [Math]::Max(0, [Math]::Min($safeSel, $Items.Count - $maxShow))
+    $wrapW = [Math]::Max(12, $LineLen - 4)
+    $n = 0
+    for ($i = 0; $i -lt $maxShow; $i++) {
+        $idx = $scrollOffset + $i
+        $n++
+        if ($idx -eq $safeSel) {
+            $long = $Items[$idx].descLong
+            if ($long) {
+                $longClean = ($long -replace '[\r\n]', '').Trim()
+                if ($longClean) {
+                    $n += (Split-UITextToLines -Text $longClean -MaxWidth $wrapW).Count
+                }
+            }
+        }
+    }
+    if ($Items.Count -gt $Script:MaxVisibleItems) { $n++ }
+    $n++
+    return $n
+}
+
 function Write-ListLines {
     param([array]$Items, [int]$SelectedIndex)
     if ($Items.Count -eq 0) { return }
@@ -119,26 +146,13 @@ function Test-PortConnected {
     } catch { return $false }
 }
 
-# Renders the command palette (title, status, input line, item list, hint line).
-# Clear nur wenn verkleinert (last > currentLines), um Flackern zu vermeiden.
-function Render-Palette {
-    param(
-        [string]$Buffer,
-        [array]$Items,
-        [int]$SelectedIndex,
-        [ref]$LastLineCount,
-        [string]$ConnectionStatus = 'connected'
-    )
-    $raw = $Host.UI.RawUI
-    $win = $raw.WindowSize
-    $wasVisible = $true
-    try { $wasVisible = [Console]::CursorVisible } catch { }
-    try { [Console]::CursorVisible = $false } catch { }
-
-    $last = $LastLineCount.Value
+# Gesamthoehe der Palette (wie bisher) — fuer Clear alter Leerzeilen nach Full-Redraw.
+function Get-PaletteTotalContentLines {
+    param([array]$Items, [int]$SelectedIndex, $WindowSize)
+    $w = if ($WindowSize) { $WindowSize.Width } else { $Host.UI.RawUI.WindowSize.Width }
+    $lineLenForCount = [Math]::Max(50, [Math]::Min(76, $w - 3))
     $currentLines = 8
     if ($Items.Count -gt 0) {
-        $lineLenForCount = [Math]::Max(50, [Math]::Min(76, $win.Width - 3))
         $safeSel = [Math]::Max(0, [Math]::Min($SelectedIndex, $Items.Count - 1))
         $longLines = Get-DescLongLineCount -LongText $Items[$safeSel].descLong -LineLen $lineLenForCount
         $currentLines = 8 + [Math]::Min($Items.Count, $Script:MaxVisibleItems) + 1 + $longLines
@@ -146,15 +160,157 @@ function Render-Palette {
     } else {
         $currentLines = 10
     }
+    return $currentLines
+}
+
+# Eingabezeile neu zeichnen (ohne den Rest der Oberflaeche) — Cursor am Ende auf Caret-Position.
+function Write-PaletteInputRow {
+    param(
+        [string]$Buffer,
+        [int]$ConsoleWidth
+    )
+    Write-Host -NoNewline ($Script:ArrowRight + ' ')
+    Write-Host -NoNewline $Buffer -ForegroundColor White
+    Write-Host -NoNewline '_' -ForegroundColor Yellow
+    $used = ($Script:ArrowRight + ' ').Length + $Buffer.Length + 1
+    $pad = [Math]::Max(0, $ConsoleWidth - 1 - $used)
+    if ($pad -gt 0) { Write-Host -NoNewline (' ' * $pad) }
+    Write-Host ''
+}
+
+# Renders the command palette (title, status, input line, item list, hint line).
+# RedrawMode: Full = wie bisher; Input/List/Status = nur geaenderte Zeilen (weniger Flackern).
+function Render-Palette {
+    param(
+        [string]$Buffer,
+        [array]$Items,
+        [int]$SelectedIndex,
+        [ref]$LastLineCount,
+        [string]$ConnectionStatus = 'connected',
+        [ValidateSet('Full', 'Input', 'List', 'Status')]
+        [string]$RedrawMode = 'Full',
+        [int]$PreviousListBlockLines = -1
+    )
+    $raw = $Host.UI.RawUI
+    $win = $raw.WindowSize
+    $wasVisible = $true
+    try { $wasVisible = [Console]::CursorVisible } catch { }
+    try { [Console]::CursorVisible = $false } catch { }
+
+    $lineLen = [Math]::Max(50, [Math]::Min(76, $win.Width - 2))
+    $lineLenList = [Math]::Max(50, [Math]::Min(76, $win.Width - 3))
+    $paletteRowInput = 4
+    $paletteRowStatus = 2
+    $paletteRowListStart = 6
+
+    $last = $LastLineCount.Value
+    $currentLines = Get-PaletteTotalContentLines -Items $Items -SelectedIndex $SelectedIndex -WindowSize $win
+
+    $canMoveCursor = $true
+    try {
+        $null = $raw.CursorPosition
+    } catch {
+        $canMoveCursor = $false
+    }
+
+    if (-not $canMoveCursor) {
+        $RedrawMode = 'Full'
+    }
+
+    if ($RedrawMode -eq 'Input') {
+        try {
+            $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, $paletteRowInput)
+        } catch {
+            try { [Console]::CursorVisible = $wasVisible } catch { }
+            return
+        }
+        Write-PaletteInputRow -Buffer $Buffer -ConsoleWidth $win.Width
+        $inputLineX = [Math]::Max(2, [Math]::Min(3 + $Buffer.Length, $win.Width - 2))
+        try {
+            $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates($inputLineX, $paletteRowInput)
+            [Console]::CursorVisible = $true
+        } catch {
+            try { [Console]::CursorVisible = $wasVisible } catch { }
+        }
+        return
+    }
+
+    if ($RedrawMode -eq 'Status') {
+        try {
+            $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, $paletteRowStatus)
+        } catch {
+            try { [Console]::CursorVisible = $wasVisible } catch { }
+            return
+        }
+        $statusLine = switch ($ConnectionStatus) {
+            'connected'    { Get-UIString 'StatusConnected' }
+            'reconnecting' { Get-UIString 'StatusReconnecting' }
+            'lost'         { Get-UIString 'StatusReconnecting' }
+            default        { Get-UIString 'StatusConnected' }
+        }
+        $statusColor = if ($ConnectionStatus -eq 'connected') { 'DarkGray' } else { 'Yellow' }
+        $padLen = [Math]::Max(76, $win.Width - 2)
+        Write-Host ($statusLine.PadRight($padLen)) -ForegroundColor $statusColor
+        if ($Items.Count -eq 0) {
+            try { $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, $paletteRowListStart) } catch { }
+            $hintLine = if ($ConnectionStatus -eq 'lost' -or $ConnectionStatus -eq 'reconnecting') {
+                '  ' + (Get-UIString 'HintReconnect')
+            } else {
+                '  ' + (Get-UIString 'HintCommands')
+            }
+            Write-Host $hintLine.PadRight($lineLen) -ForegroundColor DarkGray
+            try { $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, ($paletteRowListStart + 1)) } catch { }
+            Write-Host ('  ' + (Get-UIString 'HintShortcuts')).PadRight($lineLen) -ForegroundColor DarkGray
+        }
+        $inputLineX = [Math]::Max(2, [Math]::Min(3 + $Buffer.Length, $win.Width - 2))
+        try {
+            $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates($inputLineX, $paletteRowInput)
+            [Console]::CursorVisible = $true
+        } catch {
+            try { [Console]::CursorVisible = $wasVisible } catch { }
+        }
+        return
+    }
+
+    if ($RedrawMode -eq 'List') {
+        $newBlock = Get-PaletteListBlockLineCount -Items $Items -SelectedIndex $SelectedIndex -LineLen $lineLenList
+        try {
+            $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, $paletteRowListStart)
+        } catch {
+            try { [Console]::CursorVisible = $wasVisible } catch { }
+            return
+        }
+        Write-ListLines -Items $Items -SelectedIndex $SelectedIndex
+        Write-Host ('  Tab=Complete  Enter=Select').PadRight($lineLen) -ForegroundColor DarkGray
+        if ($PreviousListBlockLines -gt $newBlock) {
+            $clearW = [Math]::Max(0, [Math]::Min(76, $win.Width - 1))
+            for ($r = 0; $r -lt ($PreviousListBlockLines - $newBlock); $r++) {
+                try {
+                    $y = $paletteRowListStart + $newBlock + $r
+                    $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates(0, $y)
+                } catch { break }
+                if ($clearW -gt 0) { Write-Host (' ' * $clearW) } else { Write-Host '' }
+            }
+        }
+        $LastLineCount.Value = [Math]::Max($LastLineCount.Value, $currentLines)
+        $inputLineX = [Math]::Max(2, [Math]::Min(3 + $Buffer.Length, $win.Width - 2))
+        try {
+            $raw.CursorPosition = New-Object System.Management.Automation.Host.Coordinates($inputLineX, $paletteRowInput)
+            [Console]::CursorVisible = $true
+        } catch {
+            try { [Console]::CursorVisible = $wasVisible } catch { }
+        }
+        return
+    }
+
+    # --- Full ---
     if ($last -gt 0 -and $last -gt $currentLines) {
         try { [Console]::Clear() } catch { Clear-Host }
     }
-    $startY = 0
-    $coord = New-Object System.Management.Automation.Host.Coordinates(0, $startY)
+    $coord = New-Object System.Management.Automation.Host.Coordinates(0, 0)
     try {
         $raw.CursorPosition = $coord
     } catch {
-        # z.B. Pester/CI/IDE: kein gueltiges Konsolen-Handle ("Handle ungueltig")
         try { [Console]::CursorVisible = $wasVisible } catch { }
     }
 
@@ -172,12 +328,8 @@ function Render-Palette {
     $frameLen = [Math]::Max(40, [Math]::Min(76, $win.Width - 2))
     $frameLine = $Script:BoxH.ToString() * $frameLen
     Write-Host $frameLine -ForegroundColor DarkGray
-    Write-Host -NoNewline ($Script:ArrowRight + ' ')
-    Write-Host -NoNewline $Buffer -ForegroundColor White
-    Write-Host '_' -ForegroundColor Yellow -NoNewline
-    Write-Host ''
+    Write-PaletteInputRow -Buffer $Buffer -ConsoleWidth $win.Width
     Write-Host $frameLine -ForegroundColor DarkGray
-    $lineLen = [Math]::Max(50, [Math]::Min(76, $win.Width - 2))
     if ($Items.Count -gt 0) {
         Write-ListLines -Items $Items -SelectedIndex $SelectedIndex
         Write-Host ('  Tab=Complete  Enter=Select').PadRight($lineLen) -ForegroundColor DarkGray
@@ -197,10 +349,9 @@ function Render-Palette {
     }
     $LastLineCount.Value = [Math]::Max($last, $currentLines)
 
-    $inputLineY = 4
     $inputLineX = [Math]::Max(2, [Math]::Min(3 + $Buffer.Length, $win.Width - 2))
     try {
-        $cursorCoord = New-Object System.Management.Automation.Host.Coordinates($inputLineX, $inputLineY)
+        $cursorCoord = New-Object System.Management.Automation.Host.Coordinates($inputLineX, $paletteRowInput)
         $raw.CursorPosition = $cursorCoord
         [Console]::CursorVisible = $true
     } catch {
@@ -254,7 +405,10 @@ function Invoke-CommandPalette {
     $connectionStatus = 'connected'
     $checkInterval = 0
     $currentPort = if ($hasPortRef) { $PortRef.Value } else { $Port }
-    $lastRender = @{ buf = ''; sel = -1; itemsKey = ''; conn = '' }
+    $lastRender = @{
+        buf = ''; sel = -1; itemsKey = ''; conn = ''
+        winW = 0; listBlockLines = -1; painted = $false
+    }
 
     if (-not $isTest) {
         try { [Console]::Clear() } catch { Clear-Host }
@@ -302,10 +456,35 @@ function Invoke-CommandPalette {
                 }
             }
             $itemsKey = ($items | ForEach-Object { $_.cmd }) -join '|'
-            $needRender = ($buffer -ne $lastRender.buf) -or ($sel -ne $lastRender.sel) -or ($itemsKey -ne $lastRender.itemsKey) -or ($connectionStatus -ne $lastRender.conn)
+            $winNow = $Host.UI.RawUI.WindowSize
+            $lineLenList = [Math]::Max(50, [Math]::Min(76, $winNow.Width - 3))
+            $newListLines = if ($items.Count -gt 0) {
+                Get-PaletteListBlockLineCount -Items $items -SelectedIndex $sel -LineLen $lineLenList
+            } else { 0 }
+            $needRender = ($buffer -ne $lastRender.buf) -or ($sel -ne $lastRender.sel) -or ($itemsKey -ne $lastRender.itemsKey) -or ($connectionStatus -ne $lastRender.conn) -or ($winNow.Width -ne $lastRender.winW)
             if ($needRender) {
-                Render-Palette -Buffer $buffer -Items $items -SelectedIndex $sel -LastLineCount $lastLineCountRef -ConnectionStatus $connectionStatus
-                $lastRender = @{ buf = $buffer; sel = $sel; itemsKey = $itemsKey; conn = $connectionStatus }
+                $redrawMode = 'Full'
+                if ($lastRender.painted -and ($winNow.Width -eq $lastRender.winW)) {
+                    $sameItems = ($itemsKey -eq $lastRender.itemsKey)
+                    $sameConn = ($connectionStatus -eq $lastRender.conn)
+                    $sameBuf = ($buffer -eq $lastRender.buf)
+                    $sameSel = ($sel -eq $lastRender.sel)
+                    if ($sameItems -and $sameConn) {
+                        if ((-not $sameBuf) -and $sameSel) {
+                            $redrawMode = 'Input'
+                        } elseif (($items.Count -gt 0) -and $sameBuf -and (-not $sameSel) -and ($newListLines -eq $lastRender.listBlockLines)) {
+                            $redrawMode = 'List'
+                        } elseif ($sameBuf -and $sameSel -and (-not $sameConn)) {
+                            $redrawMode = 'Status'
+                        }
+                    }
+                }
+                $prevLL = $lastRender.listBlockLines
+                Render-Palette -Buffer $buffer -Items $items -SelectedIndex $sel -LastLineCount $lastLineCountRef -ConnectionStatus $connectionStatus -RedrawMode $redrawMode -PreviousListBlockLines $prevLL
+                $lastRender = @{
+                    buf = $buffer; sel = $sel; itemsKey = $itemsKey; conn = $connectionStatus
+                    winW = $winNow.Width; listBlockLines = $newListLines; painted = $true
+                }
             }
         }
 
