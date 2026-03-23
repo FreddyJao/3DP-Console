@@ -22,9 +22,21 @@ Mit diesem Tool konnte ich automatisierte Tests durchführen, Sensorreaktionen a
 
 Tippe **`/`** (Slash-Befehle), **`G`** oder **`M`**, um die Paletten zu öffnen – ähnlich Autovervollständigung. Die Einträge sind in [`src/3DP-Config.ps1`](../src/3DP-Config.ps1) vollständig konfigurierbar (nur die von dir definierten Befehle erscheinen).
 
+![Konsole mit G-/M-Palette und Statuszeile](img/Terminal_Interface.png)
+
+*Beispiel: Paletten-Navigation und Verbindungsstatus im Terminal.*
+
 ### Loops
 
 Erstelle automatisierte Abläufe, die bestimmte Tests wiederholt ausführen. Nützlich für Temperaturtests, Sensoranalysen oder wiederholte Messungen des Druckbetts. Nutze vorbereitete Loops oder definiere eigene.
+
+![Loop „interactive_bedlevel“ mit farbigem Mesh](img/Terminal_Loop_Bed-Leveling.png)
+
+*Interaktives Bett-Leveling: Mesh-Zellen mit Ampelfarben (grün / gelb / rot).*
+
+![Auszug aus einem Level-Compare-Lauf](img/Terminal_Loop_Level_Compare_Snipped.png)
+
+*Level-Compare: wiederholte Vermessung und Vergleich der Meshtabelle (Ausschnitt).*
 
 ### Makros
 

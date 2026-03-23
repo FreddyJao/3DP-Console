@@ -22,9 +22,21 @@ With this tool, I could run automated tests, analyze sensor responses, measure t
 
 Type **`/`** (slash commands), **`G`**, or **`M`** to open the palettes—similar to autocomplete. Entries are fully configurable in [`src/3DP-Config.ps1`](src/3DP-Config.ps1) (only the commands you define are shown).
 
+![Console with G/M palette and status line](doku/img/Terminal_Interface.png)
+
+*Example: palette navigation and connection status in the terminal.*
+
 ### Loops
 
 Create automated workflows that repeat tests. Useful for temperature tests, sensor analysis, or repeated bed measurements. Use predefined loops or define your own.
+
+![interactive_bedlevel loop with colored mesh](doku/img/Terminal_Loop_Bed-Leveling.png)
+
+*Interactive bed leveling: mesh cells with green / yellow / red highlights.*
+
+![Snippet from a level-compare run](doku/img/Terminal_Loop_Level_Compare_Snipped.png)
+
+*Level compare: repeated probing and mesh comparison (excerpt).*
 
 ### Macros
 
