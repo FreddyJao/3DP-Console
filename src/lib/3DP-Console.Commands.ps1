@@ -35,7 +35,7 @@ function Get-SlashCommandArgs {
 # 4. SLASH-COMMAND-HANDLER (Home, Move, Extrude, Monitor, SD, Macro, ...)
 # =============================================================================
 
-# Reine G-Code-Logik (von Pester direkt aufrufbar; gleiche Zeilen wie frueher in Invoke-*).
+# Pure G-code logic (callable from Pester directly; same lines as previously in Invoke-*).
 function Get-3DPConsoleHomeAxesGcode {
     param([string]$AxesText)
     $axes = $AxesText.Trim().ToLower()
@@ -55,7 +55,7 @@ function Invoke-HomeAxes {
     $null = Read-SerialResponse -Port $Port -Ms (Get-GcodeTimeout $gcode) -ExpectedOkCount $lineCount
 }
 
-# Ergebnis: gcode (string) oder Fehlercode axis|distance|syntax + ggf. axis-Name
+# Result: gcode (string) or error code axis|distance|syntax plus optional axis name
 function Get-3DPConsoleRelativeMoveGcode {
     param([string]$ArgsText)
     $parts = ($ArgsText -split '\s+') | Where-Object { $_ }
@@ -149,11 +149,11 @@ function Invoke-Monitor {
                 }
             }
             Start-Sleep -Seconds $interval
-            # Pester / Headless: eine Runde reicht fuer Coverage (sonst haengen Tests an Endlosschleife).
+            # Pester / headless: one iteration is enough for coverage (else tests hang on infinite loop).
             if ($env:THREEDP_CONSOLE_SKIP_MAIN -eq '1') { break }
         }
     } catch {
-        # Ctrl+C oder Abbruch durch Benutzer erwartet
+        # Ctrl+C or user abort expected
     }
     Write-Host '  Monitor beendet.' -ForegroundColor DarkGray
 }
@@ -191,7 +191,7 @@ function Invoke-SdLs {
 }
 
 function Invoke-SdPrint {
-    # [object] erlaubt echte SerialPort-Instanzen und Pester-Mock-Ports (WriteLine ohne geoeffneten COM).
+    # [object] allows real SerialPort instances and Pester mock ports (WriteLine without open COM).
     param([object]$Port, [string]$Filename)
     if (-not $Filename) { Write-Host '  Syntax: /sdprint <filename.g>' -ForegroundColor Yellow; return }
     $fn = $Filename.Trim().ToLower()
@@ -260,7 +260,7 @@ function Invoke-Macro {
 }
 
 # =============================================================================
-# 5. DATEN (MaxVisibleItems, UI-Symbole - G/M/Slash/Quick kommen aus Config)
+# 5. DATA (MaxVisibleItems, UI symbols — G/M/Slash/Quick come from config)
 # =============================================================================
 
 $Script:MaxVisibleItems = if ($null -ne $Script:Config.MaxVisibleItems -and $Script:Config.MaxVisibleItems -gt 0) { [int]$Script:Config.MaxVisibleItems } else { 12 }
@@ -269,7 +269,7 @@ $Script:ArrowDown = [char]0x2193
 $Script:BoxH = [char]0x2500
 
 # =============================================================================
-# 6. PALETTE LOGIC (Get-PaletteItems, Loops, /-commands, G/M-filter)
+# 6. PALETTE LOGIC (Get-PaletteItems, loops, /-commands, G/M filter)
 # =============================================================================
 
 function Get-LoopPaletteItems {

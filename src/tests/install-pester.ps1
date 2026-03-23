@@ -1,12 +1,12 @@
-# Pester 5+ installieren (CurrentUser).
+# Install Pester 5+ (CurrentUser scope).
 #
-# Vom Repository-Root:
+# From repository root:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File ".\src\tests\install-pester.ps1"
 #
-# Mit bereits heruntergeladener .nupkg (z. B. aus dem Browser):
+# With a downloaded .nupkg (e.g. from browser):
 #   powershell -NoProfile -ExecutionPolicy Bypass -File ".\src\tests\install-pester.ps1" -NupkgPath "C:\Users\XYZ\Downloads\pester.5.6.1.nupkg"
 #
-# Optional: -UseInstallModule - statt .nupkg: Install-Module (kann sehr lange haengen).
+# Optional: -UseInstallModule — use Install-Module instead of .nupkg (can take a long time).
 
 param(
     [string]$NupkgPath,
@@ -25,7 +25,7 @@ function Test-PesterModuleUsable {
     return [bool](Get-ChildItem -LiteralPath $bin -Filter 'Pester.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)
 }
 
-# Kaputte Installationen (Manifest da, Pester.dll fehlt) fuehren zu Import-Fehlern — Ordner entfernen.
+# Broken installs (manifest present, Pester.dll missing) cause import errors — remove that folder.
 Get-Module -ListAvailable -Name Pester | Where-Object { $_.Version -ge [version]'5.0.0' } | ForEach-Object {
     if (-not (Test-PesterModuleUsable $_)) {
         Write-Warning "Unvollstaendiges Pester $($_.Version) entfernen: $($_.ModuleBase)"

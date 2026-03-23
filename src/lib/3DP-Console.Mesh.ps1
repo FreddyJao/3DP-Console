@@ -43,8 +43,8 @@ function Format-TemperatureReport {
     return $result
 }
 
-# Extrahiert Zahlen aus Zeile (Regex + InvariantCulture TryParse)
-# Regex '[+-]?\d+[.,]?\d*': Optionales Vorzeichen, Ziffern, optional Dezimalpunkt/Komma
+# Extract numbers from a line (regex + InvariantCulture TryParse)
+# Regex '[+-]?\d+[.,]?\d*': optional sign, digits, optional decimal point/comma
 function Parse-MeshLineToNumbers {
     param([string]$LinePart)
     $numbers = [regex]::Matches($LinePart, '[+-]?\d+[.,]?\d*') | ForEach-Object {
@@ -60,14 +60,14 @@ function Parse-MeshFromG29Output {
     $lines = $Output -split "[\r\n]+"
     foreach ($line in $lines) {
         $trimmed = $line.Trim()
-        # Format 1: ^\d+\s+([+\-0-9.,\s]+)$ – Zeilennummer + Leerzeichen + Zahlen (G29 Bilinear)
+        # Format 1: ^\d+\s+([+\-0-9.,\s]+)$ — line number + spaces + values (G29 bilinear)
         if ($trimmed -match '^\d+\s+([+\-0-9.,\s]+)$') {
             $numPart = $Matches[1]
             $numPartHasDecimalOrSign = $numPart -match '[+\-]' -or $numPart -match '\.\d'
             $numbers = Parse-MeshLineToNumbers -LinePart $numPart
             if ($numbers.Count -gt 0 -and $numPartHasDecimalOrSign) { $mesh += ,@($numbers) }
         }
-        # Format 2: ^([+\-0-9.,\s;]+)$ – Nur erlaubte Zeichen (M420 T1 CSV)
+        # Format 2: ^([+\-0-9.,\s;]+)$ — allowed characters only (M420 T1 CSV)
         else {
             $hasValidChars = $trimmed -match '^([+\-0-9.,\s;]+)$' -and $trimmed -match '\d'
             $hasDecimalOrSign = $trimmed -match '[+\-]' -or $trimmed -match '\.\d'
@@ -127,7 +127,7 @@ function Get-MeshCellDisplayInfo {
     } else {
         $color = $info.color
     }
-    # Interaktives Bed Level: im Band ±0,100 mm neutral (weiß), kein Grün/Rot durch Schwellen oder Pfeile
+    # Interactive bed level: within ±0.100 mm band = neutral (white), no green/red from thresholds or arrows
     if ([Math]::Abs($val) -le 0.100) { $color = 'White' }
     return @{ cellText = $cellText; color = $color }
 }
@@ -143,7 +143,7 @@ function Format-MeshWithColors {
     if (-not $PSBoundParameters.ContainsKey('ThresholdYellow')) { $ThresholdYellow = if ($null -ne $Script:Config.MeshThresholdYellowMm) { [double]$Script:Config.MeshThresholdYellowMm } else { 0.15 } }
     if (-not $Mesh -or $Mesh.Count -eq 0) { return }
     $colCount = $Mesh[0].Count
-    # Header: gleiche Breite wie Zeilenindex ({0,4}), sonst sitzen Spaltenköpfe versetzt
+    # Header: same width as row index ({0,4}), else column headers misalign
     Write-Host -NoNewline ('{0,4}' -f '') -ForegroundColor Gray
     for ($c = 0; $c -lt $colCount; $c++) { Write-Host -NoNewline ('{0,8}' -f $c) -ForegroundColor Gray }
     Write-Host ''

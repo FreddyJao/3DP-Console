@@ -3,10 +3,10 @@
     Sourced by 3DP-Console.ps1 only.
 #>
 
-# 11. SERIAL-KOMMUNIKATION (Send-Gcode, Read-Serial)
+# 11. SERIAL I/O (Send-Gcode, Read-Serial)
 # =============================================================================
 
-# Zeilenpuffer nach CR/LF in fertige Zeilen + Rest (fuer Tests + gemeinsame Logik).
+# Line buffer: split on CR/LF into complete lines + remainder (for tests + shared logic).
 function Split-SerialLineBuffer {
     param([string]$Buffer)
     if ($null -eq $Buffer) { $Buffer = '' }
@@ -19,13 +19,13 @@ function Split-SerialLineBuffer {
     return @{ Complete = $complete; Remainder = $lines[-1] }
 }
 
-# ok/busy/wait-Zeilen nicht als Nutzer-Feedback ausgeben (wie in Read-Serial*).
+# Do not show ok/busy/wait lines as user feedback (same as Read-Serial*).
 function Test-SerialLineIsBusyOkIgnore {
     param([string]$Line)
     return [bool]($Line -match '^ok\s*\d*$|busy:\s*processing|busy:\s*heating|Active Extruder:\s*\d*$|^wait')
 }
 
-# Chunk an Zeilenpuffer anhaengen und fertige Zeilen zurueckgeben (Read-Serial* + Unit-Tests).
+# Append chunk to line buffer and return completed lines (Read-Serial* + unit tests).
 function Append-SerialChunkToLineBuffer {
     param(
         [ref]$Buffer,
@@ -152,6 +152,14 @@ function Invoke-GcodeAndWaitOrAbort {
     return $true
 }
 
+function Write-3DPConsoleSerialResponseTroubleshootingHint {
+    param([int]$OkCount, [int]$ExpectedOkCount, [switch]$Silent)
+    if ($Silent) { return }
+    if ($OkCount -ge $ExpectedOkCount) { return }
+    $baud = if ($null -ne $Script:Config -and $null -ne $Script:Config.BaudRate) { [string]$Script:Config.BaudRate } else { '115200' }
+    Write-Host ('  Hinweis: Unvollstaendige Drucker-Antwort (ok: ' + $OkCount + '/' + $ExpectedOkCount + '). BaudRate in der Config pruefen (aktuell ' + $baud + '), COM-Port pruefen, anderes Programm am Port schliessen.') -ForegroundColor DarkYellow
+}
+
 function Read-SerialAndCapture {
     param([System.IO.Ports.SerialPort]$Port, [int]$Ms = 10000, [int]$ExpectedOkCount = 1, [switch]$AllowAbort, [switch]$Silent)
     $ExpectedOkCount = [Math]::Max(1, $ExpectedOkCount)
@@ -164,7 +172,7 @@ function Read-SerialAndCapture {
     $collected = [System.Text.StringBuilder]::new()
     $hadError = $false
     while (((Get-Date) - $start).TotalMilliseconds -lt $Ms) {
-        # Ohne diese Abfrage: in IDE/Headless faellt KeyAvailable+ReadKey oft falsch aus (Abgebrochen / Haenger).
+        # Without this check: KeyAvailable+ReadKey often misbehaves in IDE/headless ([Abgebrochen] / hang).
         if ($AllowAbort -and $env:THREEDP_CONSOLE_SKIP_MAIN -ne '1') {
             if (Test-3DPConsoleCtrlCRequestedAndReset) {
                 $Port.ReadTimeout = $prevReadTimeout
@@ -224,6 +232,7 @@ function Read-SerialAndCapture {
         Start-Sleep -Milliseconds 20
     }
     $Port.ReadTimeout = $prevReadTimeout
+    Write-3DPConsoleSerialResponseTroubleshootingHint -OkCount $okCount -ExpectedOkCount $ExpectedOkCount -Silent:$Silent
     return $collected.ToString()
 }
 
@@ -303,6 +312,7 @@ function Read-SerialResponse {
         Start-Sleep -Milliseconds 20
     }
     $Port.ReadTimeout = $prevReadTimeout
+    Write-3DPConsoleSerialResponseTroubleshootingHint -OkCount $okCount -ExpectedOkCount $ExpectedOkCount -Silent:$Silent
     return (-not $hadError)
 }
 

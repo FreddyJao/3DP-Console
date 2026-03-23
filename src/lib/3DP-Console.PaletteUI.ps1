@@ -4,7 +4,7 @@
 #>
 
 # =============================================================================
-# 7. UI-RENDERING (Write-ListLines, Render-Palette, Port-Check)
+# 7. UI RENDERING (Write-ListLines, Render-Palette, port check)
 # =============================================================================
 
 # Word-wrap for palette detail lines (prevents terminal wrap from merging into next menu row).
@@ -43,7 +43,7 @@ function Get-DescLongLineCount {
     return (Split-UITextToLines -Text $longClean -MaxWidth $wrapW).Count
 }
 
-# Zeilenanzahl des Listenteils (wie Write-ListLines + eine Fußzeile „Tab=…“) — für partielles Neuzeichnen.
+# Line count of the list area (like Write-ListLines + one footer line "Tab=…") — for partial redraw.
 function Get-PaletteListBlockLineCount {
     param([array]$Items, [int]$SelectedIndex, [int]$LineLen)
     if ($Items.Count -eq 0) { return 0 }
@@ -149,7 +149,7 @@ function Test-PortConnected {
     } catch { return $false }
 }
 
-# Gesamthoehe der Palette (wie bisher) — fuer Clear alter Leerzeilen nach Full-Redraw.
+# Total palette height (as before) — for clearing old blank lines after full redraw.
 function Get-PaletteTotalContentLines {
     param([array]$Items, [int]$SelectedIndex, $WindowSize)
     $w = if ($WindowSize) { $WindowSize.Width } else { $Host.UI.RawUI.WindowSize.Width }
@@ -166,7 +166,7 @@ function Get-PaletteTotalContentLines {
     return $currentLines
 }
 
-# Eingabezeile neu zeichnen (ohne den Rest der Oberflaeche) — Cursor am Ende auf Caret-Position.
+# Redraw input line only (not the rest of the UI) — cursor at end on caret position.
 function Write-PaletteInputRow {
     param(
         [string]$Buffer,
@@ -182,7 +182,7 @@ function Write-PaletteInputRow {
 }
 
 # Renders the command palette (title, status, input line, item list, hint line).
-# RedrawMode: Full = wie bisher; Input/List/Status = nur geaenderte Zeilen (weniger Flackern).
+# RedrawMode: Full = as before; Input/List/Status = only changed lines (less flicker).
 function Render-Palette {
     param(
         [string]$Buffer,
@@ -388,7 +388,7 @@ function Get-TestKey {
 }
 
 # =============================================================================
-# 8. COMMAND-PALETTE (Hauptschleife: Tastatur, Rendering, Verbindungs-Check)
+# 8. COMMAND-PALETTE (main loop: keyboard, rendering, connection check)
 # Rendert nur bei Aenderung (buffer, sel, items, connection) um Flackern zu vermeiden.
 # =============================================================================
 

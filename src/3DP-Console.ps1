@@ -53,25 +53,25 @@ Sync-3DPConsoleLegacySkipMainEnv
 #endregion
 
 # =============================================================================
-# INHALTSVERZEICHNIS (VS Code : #region einklappen)
-#   01-EarlyExit     Parameter, -Help / -About / -Example
-#   02-LoadLib       Pfade + foreach dot-source der Fragmente unter .\lib\ (nicht aus function!)
+# TABLE OF CONTENTS (VS Code: fold #region)
+#   01-EarlyExit     Parameters, -Help / -About / -Example
+#   02-LoadLib       Paths + foreach dot-source of fragments under .\lib\ (not from inside a function!)
 #
-# Fragmente (gleicher Ordner wie diese Datei, Unterordner lib\):
-#   lib\3DP-Console.Init.ps1       Encoding, Ports, Config-Template, G/M-Palette-Daten
-#   lib\3DP-Console.Commands.ps1   UI-Helfer, Slash-Handler, MaxVisible, Palette-Logik
-#   lib\3DP-Console.PaletteUI.ps1  UI-Rendering, Invoke-CommandPalette
-#   lib\3DP-Console.Mesh.ps1       Timeouts, Temperatur, Mesh-Parsing
-#   lib\3DP-Console.Loops.ps1      Level-Compare, Temp2, Interactive, Invoke-Loop
+# Fragments (same folder as this file, subfolder lib\):
+#   lib\3DP-Console.Init.ps1       Encoding, ports, config template, G/M palette data
+#   lib\3DP-Console.Commands.ps1   UI helpers, slash handler, MaxVisible, palette logic
+#   lib\3DP-Console.PaletteUI.ps1  UI rendering, Invoke-CommandPalette
+#   lib\3DP-Console.Mesh.ps1       Timeouts, temperature, mesh parsing
+#   lib\3DP-Console.Loops.ps1      Level-compare, Temp2, interactive, Invoke-Loop
 #   lib\3DP-Console.Serial.ps1     Send-Gcode, Read-Serial*
-#   lib\3DP-Console.Port.ps1       Port-Auswahl, Invoke-SingleCommand
+#   lib\3DP-Console.Port.ps1       Port selection, Invoke-SingleCommand
 #   lib\3DP-Console.MainCommand.ps1 Invoke-MainCommandLineMode (-Command)
-#   lib\3DP-Console.Main.ps1       Main + Hauptschleife
+#   lib\3DP-Console.Main.ps1       Main + main loop
 # =============================================================================
 
 #region 01-EarlyExit
 # Manual parameter parsing (works in ConstrainedLanguage where param() fails).
-# Extrahiert fuer Pester-Tests (gleicher Prozess, keine Skript-Re-Invocation).
+# Extracted for Pester tests (same process, no script re-invocation).
 function Invoke-3DPConsoleParseEarlyArgs {
     param([object[]]$ArgList = @())
     if ($null -eq $ArgList) { $ArgList = @() }
@@ -181,7 +181,7 @@ function Invoke-3DPConsoleProcessExitCode {
     param([int]$Code)
     $inv = $global:3DPConsoleExitInvoker
     if ($null -eq $inv) {
-        # Pester: ohne Invoker wuerde exit den Host beenden — Testmodus wirft stattdessen.
+        # Pester: without invoker, exit would terminate the host — test mode throws instead.
         if ($env:THREEDP_CONSOLE_TEST_THROW_ON_EXIT -eq '1') {
             throw "3DPConsoleTestExit:$Code"
         }
@@ -220,8 +220,8 @@ $_dotSourcePath = $MyInvocation.MyCommand.Path
 $Script:ConsoleRoot = Get-3DPConsoleScriptRoot -PSScriptRootHint $PSScriptRoot -DotSourceScriptPath $_dotSourcePath -PSCommandPathValue $PSCommandPath
 
 $Script:LibPath = Join-Path $Script:ConsoleRoot 'lib'
-# WICHTIG: Fragmente NICHT aus einer function heraus dot-sourcen — sonst landen
-# Funktionen im Funktions-Scope und sind nach dem Return weg (Tests schlagen fehl).
+# IMPORTANT: Do not dot-source fragments from inside a function — functions would end up in
+# function scope and disappear after return (tests would fail).
 $Script:3DPConsoleFragmentNames = @(
     '3DP-Console.Init.ps1'
     '3DP-Console.Commands.ps1'

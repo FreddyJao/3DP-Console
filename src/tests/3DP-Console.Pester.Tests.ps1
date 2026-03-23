@@ -1,20 +1,20 @@
 <#
 .SYNOPSIS
-    Optional Pester 5 tests (mocks + reine Funktionen ohne SerialPort).
+    Optional Pester 5 tests (mocks + pure functions without SerialPort).
 
 .DESCRIPTION
-    Laedt 3DP-Console.ps1 einmal; deckt Serial-Helfer mit Mocks ab und testet
-    Mesh/UI/Config-Helfer fuer hoehere CodeCoverage.
+    Loads 3DP-Console.ps1 once; covers serial helpers with mocks and tests
+    mesh/UI/config helpers for higher code coverage.
 
-    Vom Repo-Root: .\src\tests\Run-Pester.ps1
+    From repo root: .\src\tests\Run-Pester.ps1
     Requires: Pester 5.0.0+
 
 .NOTES
-    Main / volle Send-Gcode (echter Port) bleiben Integration/manuell; Get-PortOrRetry teilweise gemockt.
-    CLI-Parsing: Invoke-3DPConsoleParseEarlyArgs + Write-3DPConsole*Screen (3DP-Console.ps1).
+    Main / full Send-Gcode (real port) stay integration/manual; Get-PortOrRetry partly mocked.
+    CLI parsing: Invoke-3DPConsoleParseEarlyArgs + Write-3DPConsole*Screen (3DP-Console.ps1).
 #>
 
-# Sofort beim Einlesen der Datei: Pester kann BeforeAll verzoegern; Serial/Leseschleifen brauchen das ab Dot-Source.
+# Set immediately when this file is read: Pester may delay BeforeAll; serial/read loops need this after dot-source.
 $env:THREEDP_CONSOLE_SKIP_MAIN = '1'
 
 BeforeAll {
@@ -603,7 +603,7 @@ Describe 'Write-ListLines and Render-Palette' {
 
 Describe 'Port helpers' {
     BeforeAll {
-        # WMI-Fallback kann auf manchen Systemen sehr lange haengen; fuer den Test neutralisieren.
+        # WMI fallback can hang a long time on some systems; neutralize for this test.
         Mock Get-WmiObject { @() }
     }
     It 'Test-PortConnected null port returns false' {
@@ -1504,7 +1504,7 @@ Describe 'Invoke-Monitor (mock port)' {
 Describe 'Invoke-SdLs (mock port)' {
     BeforeAll {
         Mock Write-Host { }
-        # Nur Millisekunden-Sleeps weglassen (sonst 10s-While-Schleife mit leerem Sleep = CPU-Spirale)
+        # Skip only millisecond sleeps (else 10s while-loop with empty sleep = CPU spin)
         Mock Start-Sleep -ParameterFilter { $PSBoundParameters.ContainsKey('Milliseconds') } { }
     }
     It 'lists .gcode files when buffer contains End file list' {
@@ -2793,7 +2793,7 @@ Describe 'Invoke-Temp2LevelingLoop (mocked steps)' {
             $script:stEsc = 0
             Mock Read-3DPConsoleEscapePoll {
                 $script:stEsc++
-                # 1=Step-Start, 2+=Stabilisierungs-Warte-Schleife (nach M104..M190)
+                # 1=step start, 2+=stabilization wait loop (after M104..M190)
                 if ($script:stEsc -eq 3) { return 'Escape' }
                 return $null
             }

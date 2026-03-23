@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-    Optional: Pester 5 + CodeCoverage auf lib\ und 3DP-Console.ps1.
+    Optional: Pester 5 + code coverage on lib\ and 3DP-Console.ps1.
 
 .DESCRIPTION
-    Ergaenzt Test-All.ps1 (Pester ist nicht Pflicht).
-    CodeCoverage-Mindestziel auf den gemessenen Dateien: 90% (siehe Code am Ende des Skripts).
+    Complements Test-All.ps1 (Pester is optional).
+    Code coverage minimum on measured files: 90% (see code at end of script).
     Install:  Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser -SkipPublisherCheck
 
 .PARAMETER InstallPester
-    Versucht Pester per Install-Module zu installieren (CurrentUser).
+    Try to install Pester via Install-Module (CurrentUser).
 
 .PARAMETER NoCodeCoverage
-    Schneller Lauf ohne CodeCoverage.
+    Faster run without code coverage.
 
 .EXAMPLE
     .\src\tests\Run-Pester.ps1
@@ -61,10 +61,10 @@ if ($NoCodeCoverage) {
     }
     $result = Invoke-Pester -Configuration $configuration
 } else {
-    # Ausgeschlossen von der Messung (weiterhin zur Laufzeit geladen):
-    # - Main / PaletteUI: interaktive UI
-    # - Init: NuGet/Assembly-Bootstrap, env-abhaengig
-    # - Serial: Read-Serial* / echte Port-Schleifen (ohne Hardware kaum sinnvoll; Integration: Test-All -WithPort)
+    # Excluded from measurement (still loaded at runtime):
+    # - Main / PaletteUI: interactive UI
+    # - Init: NuGet/assembly bootstrap, environment-dependent
+    # - Serial: Read-Serial* / real port loops (little value without hardware; integration: Test-All -WithPort)
     $cov = @(
         (Join-Path $root '3DP-Console.ps1')
     ) + @(Get-ChildItem -Path (Join-Path $root 'lib') -Filter '*.ps1' -File | ForEach-Object { $_.FullName } | Where-Object {
@@ -95,7 +95,7 @@ Write-Host "Pester: Passed=$passed" -ForegroundColor Green
 
 if (-not $NoCodeCoverage -and $result.CodeCoverage) {
     $cc = $result.CodeCoverage
-    # Pester 5+: CoveragePercent / CoveragePercentTarget (kein NumberOfCommandsAnalyzed mehr)
+    # Pester 5+: CoveragePercent / CoveragePercentTarget (no NumberOfCommandsAnalyzed anymore)
     if ($null -ne $cc.CoveragePercent) {
         $pct = [math]::Round([double]$cc.CoveragePercent, 1)
         $minPct = 90

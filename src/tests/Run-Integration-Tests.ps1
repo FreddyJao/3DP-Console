@@ -7,8 +7,8 @@
     Then starts Test-All.ps1 with -WithPort and the same parameters you pass here.
 
     COVERAGE: .\src\tests\TEST-COVERAGE.de.md explains which lib\*.ps1 functions are exercised
-    (Direkt / Indirekt / Teilweise / Bedingt / Kein Auto-Test). Optional switches below
-    match the "bedingt" + Copy-Paste table there.
+    (German labels: Direct / Indirect / Partial / Conditional / No auto-test). Optional switches below
+    match the conditional ("bedingt") + copy-paste table there.
 
     Defaults align with Test-All.ps1 -WithPort (SkipLong on, no -TestLevelCompare unless you opt in).
 
@@ -45,7 +45,7 @@
 
 .EXAMPLE
     .\src\tests\Run-Integration-Tests.ps1 -TestLevelCompare
-    Adds bedingt path: Invoke-LevelCompareLoop + Read-SerialAndCapture (~10+ min).
+    Adds conditional path: Invoke-LevelCompareLoop + Read-SerialAndCapture (~10+ min).
 
 .EXAMPLE
     .\src\tests\Run-Integration-Tests.ps1 -ComPort COM4 -SkipLong:$false
@@ -106,10 +106,21 @@ function Get-IntegrationTestAllSplat {
 }
 
 # --- Check port availability (optional for DryRun) ---
-if (-not ($DryRun -and $SkipPortCheck)) {
-    Write-Host "Checking COM port $ComPort..." -ForegroundColor Cyan
+$probeBaud = 115200
+$cfgForProbe = Join-Path (Split-Path -Parent $PSScriptRoot) '3DP-Config.ps1'
+if (Test-Path -LiteralPath $cfgForProbe) {
     try {
-        $port = New-Object System.IO.Ports.SerialPort $ComPort, 115200, None, 8, One
+        $cfgHt = . $cfgForProbe
+        if ($cfgHt -is [System.Collections.IDictionary] -and $null -ne $cfgHt['BaudRate']) {
+            $probeBaud = [int]$cfgHt['BaudRate']
+        }
+    } catch { }
+}
+
+if (-not ($DryRun -and $SkipPortCheck)) {
+    Write-Host "Checking COM port $ComPort (probe baud $probeBaud)..." -ForegroundColor Cyan
+    try {
+        $port = New-Object System.IO.Ports.SerialPort $ComPort, $probeBaud, None, 8, One
         $port.Open()
         $port.Close()
         $port.Dispose()

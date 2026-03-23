@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Configuration for 3DP-Console.
 
@@ -13,6 +13,8 @@
     # Serial connection
     # -------------------------------------------------------------------------
     ComPort  = "COM5"
+    # USB serial: often 115200 (e.g. Prusa Buddy, many Marlin boards). Other boards/firmware may use
+    # e.g. 250000 or 500000 — if you see garbage or timeouts, change this value (see README.de.md).
     BaudRate = 115200
 
     # -------------------------------------------------------------------------
@@ -59,11 +61,11 @@
     ExitMessage        = "Console closed."
 
     # -------------------------------------------------------------------------
-    # Session transcript (Debug-Log: gesendeter G-Code + Rohzeilen vom Drucker)
-    # Standard: aus. Nur aktivieren, wenn du eine zeitgestempelte .log-Datei brauchst.
+    # Session transcript (debug log: sent G-code + raw lines from printer)
+    # Default: off. Enable only if you need a timestamped .log file.
     # -------------------------------------------------------------------------
     SessionTranscriptEnabled   = $false
-    # Leer = Ordner "SessionLogs" neben 3DP-Console.ps1; sonst absoluter Pfad oder relativ zu diesem Skriptordner
+    # Empty = folder "SessionLogs" next to 3DP-Console.ps1; otherwise absolute or path relative to script folder
     # SessionTranscriptDirectory = ""
 
     # -------------------------------------------------------------------------
@@ -83,8 +85,8 @@
     HeizungVorMessung        = $false
 
     # Interactive Bed Leveling (mesh color thresholds)
-    MeshThresholdGreenMm  = 0.05   # <= grün (gut ausgerichtet)
-    MeshThresholdYellowMm = 0.15   # <= gelb (mittel), > rot
+    MeshThresholdGreenMm  = 0.05   # <= green (well aligned)
+    MeshThresholdYellowMm = 0.15   # <= yellow (medium), > red
 
     # -------------------------------------------------------------------------
     # Loops (examples: loop prepare | loop level_compare 5 | loop level_rehome_once 2 | loop temp_ramp 4)

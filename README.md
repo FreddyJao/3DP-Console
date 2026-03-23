@@ -38,7 +38,7 @@ Configure COM port, baud rate, macros, loops, commands, response timeouts, and m
 
 | Group | Keys (summary) |
 |-------|----------------|
-| **Serial** | `ComPort`, `BaudRate` |
+| **Serial** | `ComPort`, `BaudRate` (often 115200; many boards use 250000 — wrong speed causes garbage or timeouts; see *Other printers* below) |
 | **Temperatures** | `NozzleTempCelsius`, `BettTempCelsius`, `PLA_*`, `ABS_*` |
 | **Motion** | `xy_feedrate`, `z_feedrate`, `e_feedrate`, `default_extrusion` |
 | **Monitor** | `monitor_interval` (seconds for `/monitor`) |
@@ -65,7 +65,13 @@ Do not combine `-Command` with `-CommandFile` / `-StdinCommands`. Do not combine
 
 ## Prusa Mini and beyond
 
-The tool was developed for the Prusa Mini and includes a configuration for it. It is structured so you can adapt it to other G-Code printers by creating your own configs, macros, and commands.
+The tool was developed for the Prusa Mini; the shipped [`src/3DP-Config.ps1`](src/3DP-Config.ps1) matches that. For other G-code firmware (e.g. Marlin), you often only need to set **COM port** and **baud rate** at first.
+
+- **Minimal example:** [`src/3DP-Config.Marlin-Example.ps1`](src/3DP-Config.Marlin-Example.ps1) — load with `-ConfigPath`; it overrides serial settings only; loops/palettes fall back to built-in defaults (same as when no config file exists).
+- **Full control:** copy `3DP-Config.ps1`, edit loops (homing, G29, heat-up), slash commands, and macros for your machine.
+- **Garbage / no `ok`:** try another **baud rate**, confirm the **COM port**, close other apps using the port. After a command times out, the console prints a short **troubleshooting hint** (baud / COM / other software).
+
+German details: [doku/README.de.md](doku/README.de.md) (section *Anderer Drucker, COM und Baudrate*).
 
 ## Testing guideline
 

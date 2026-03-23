@@ -4,9 +4,9 @@
 #>
 
 # =============================================================================
-# 13. MAIN (Hauptschleife, Action-Dispatch)
+# 13. MAIN (main loop, action dispatch)
 # =============================================================================
-# Hinweis: -Command-Pfad liegt in 3DP-Console.MainCommand.ps1 (Invoke-MainCommandLineMode).
+# Note: -Command path lives in 3DP-Console.MainCommand.ps1 (Invoke-MainCommandLineMode).
 
 function Main {
     $configPath = Join-Path $Script:BasePath "3DP-Config.ps1"
@@ -115,7 +115,7 @@ function Main {
         }
 
         try {
-            # Strg+C: ohne CancelKeyPress fragt PowerShell „Batch abbrechen?“ — z.B. waehrend Start-Sleep in Read-Serial*.
+            # Ctrl+C: without CancelKeyPress, PowerShell prompts "Stop batch job?" — e.g. during Start-Sleep in Read-Serial*.
             $Script:3DPConsoleInterruptRequested = $false
             $cancelHandler = [ConsoleCancelEventHandler]{
                 param($sender, $e)
@@ -135,7 +135,7 @@ function Main {
 
             $trimmed = $chosen.cmd.Trim().ToLower()
             if ($trimmed -in 'quit','exit','q') {
-                # Ohne Clear: Cursor steht mitten in der Palette — Read-Host/Send-Gcode überlagern Rahmen und Hinweise.
+                # Without Clear: cursor sits mid-palette — Read-Host/Send-Gcode would overlap borders and hints.
                 try { [Console]::Clear() } catch { Clear-Host }
                 Write-Host ''
                 if ($port -and $port.IsOpen) {
@@ -145,7 +145,7 @@ function Main {
                         Start-Sleep -Milliseconds 500
                         break
                     }
-                    # n = Abbruch: wieder zur Palette
+                    # n = cancel: return to palette
                     continue
                 }
                 break

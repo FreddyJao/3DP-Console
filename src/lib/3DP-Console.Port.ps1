@@ -3,7 +3,7 @@
     Sourced by 3DP-Console.ps1 only.
 #>
 
-# 12. PORT-VERWALTUNG (Config-Update, COM-Port-Auswahl)
+# 12. PORT MANAGEMENT (config update, COM port selection)
 # =============================================================================
 
 function Update-ConfigComPort {
@@ -17,7 +17,7 @@ function Update-ConfigComPort {
     } catch { return $false }
 }
 
-# Fuer Pester: Mock ersetzt, damit WMI-Fallback getestet werden kann.
+# For Pester: mock replaces this so WMI fallback can be tested.
 function Get-3DPSerialPortNativeNames {
     return [System.IO.Ports.SerialPort]::GetPortNames()
 }

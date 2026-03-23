@@ -4,7 +4,7 @@
 #>
 
 # =============================================================================
-# 13a. MAIN: -Command-Modus (einmalig, ohne Palette)
+# 13a. MAIN: -Command mode (one-shot, no palette)
 # =============================================================================
 
 function New-3DPConsoleSerialPort {
@@ -18,7 +18,7 @@ function New-3DPConsoleSerialPort {
     )
 }
 
-# Wird vom eingebetteten RunCommand-ScriptBlock aufgerufen — so greifen Pester-Mocks (kein direkter Aufruf von Invoke-SingleCommand im SB).
+# Called from the embedded RunCommand script block — Pester mocks apply (no direct Invoke-SingleCommand call in the SB).
 function Invoke-MainCommandLineModeDefaultRunSingle {
     param(
         [System.IO.Ports.SerialPort]$Port,
@@ -57,7 +57,7 @@ function Invoke-MainCommandLineMode {
         Write-Host '  Error: No COM port available.' -ForegroundColor Red
         return 1
     }
-    # Pester: Mock greift in eingebetteten ScriptBlocks nicht zuverlässig → optionaler Hook (gleicher Prozess).
+    # Pester: mock does not reliably apply inside embedded script blocks → optional hook (same process).
     $runSingle = if ($null -ne $global:3DPConsoleMainCommandRunSingleCommandScript) {
         $global:3DPConsoleMainCommandRunSingleCommandScript
     } else {
@@ -68,7 +68,7 @@ function Invoke-MainCommandLineMode {
         -RunCommandScript $runSingle
 }
 
-# Leerzeilen und #-Kommentare entfernen (Unit-Testbar).
+# Strip blank lines and #-comments (unit-test friendly).
 function Get-3DPConsoleNormalizedBatchCommandLines {
     param([string[]]$RawLines)
     if ($null -eq $RawLines) { return [string[]]@() }

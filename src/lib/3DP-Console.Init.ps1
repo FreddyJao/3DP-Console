@@ -87,7 +87,7 @@ if (-not (Ensure-SystemIOPortsLoaded)) {
     exit 1
 }
 
-# Strg+C: Main registriert Console.CancelKeyPress (ohne PowerShell „Batch abbrechen?“); Loops/Serial pollen das Flag.
+# Ctrl+C: Main registers Console.CancelKeyPress (avoids PowerShell "Stop batch job?"); loops/serial poll this flag.
 $Script:3DPConsoleInterruptRequested = $false
 $Script:3DPConsoleCancelKeyPressHandler = $null
 

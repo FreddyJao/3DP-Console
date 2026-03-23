@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
-    Fuehrt Pester mit CodeCoverage aus und zeigt die groessten Luecken (Dateien + Zeilen).
+    Run Pester with code coverage and show the largest gaps (files + lines).
 
 .DESCRIPTION
-    Nutzt dieselben Coverage-Pfade wie Run-Pester.ps1 (ohne Main/PaletteUI/Init/Serial).
-    Sinnvoll, um gezielt neue Tests zu planen — nicht blind 100 % anzustreben.
+    Uses the same coverage paths as Run-Pester.ps1 (excluding Main/PaletteUI/Init/Serial).
+    Useful to plan new tests — not blindly chasing 100%.
 
 .PARAMETER TopMissedLines
-    Anzahl der detaillierten „verpassten“ Befehle (Datei:Zeile) am Ende.
+    Number of detailed "missed" commands (file:line) shown at the end.
 
 .PARAMETER ExportCsv
-    Optional: volle Liste der verpassten Befehle als CSV (UTF-8).
+    Optional: full list of missed commands as CSV (UTF-8).
 
 .PARAMETER NoCodeCoverage
-    Nur Tests ohne Messung (schnell — keine Gap-Liste).
+    Tests only without measurement (fast — no gap list).
 
 .EXAMPLE
     .\src\tests\Show-PesterCoverageGaps.ps1
@@ -137,7 +137,7 @@ if ($ExportCsv) {
 
 Write-Host ''
 Write-Host 'Nicht gemessen (Absicht): Main, PaletteUI, Init, Serial - siehe Run-Pester.ps1 / README.md' -ForegroundColor DarkGray
-# -WithPort in doppelten Anfuehrungszeichen wuerde von Write-Host als Parameter geparst
+# -WithPort inside double quotes would be parsed as a Write-Host parameter
 Write-Host ('Integration am Drucker: src\tests\Test-All.ps1 -WithPort') -ForegroundColor DarkGray
 
 exit $(if ($failed -gt 0) { 1 } else { 0 })

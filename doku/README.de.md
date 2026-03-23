@@ -38,7 +38,7 @@ Konfiguriere COM-Port, Baudrate, Makros, Loops, Befehle, Wartezeiten für Drucke
 
 | Gruppe | Keys (Kurz) |
 |--------|-------------|
-| **Seriell** | `ComPort`, `BaudRate` |
+| **Seriell** | `ComPort`, `BaudRate` (haeufig 115200; manche Boards 250000 — Abschnitt *Anderer Drucker, COM und Baudrate* unten) |
 | **Temperaturen** | `NozzleTempCelsius`, `BettTempCelsius`, `PLA_*`, `ABS_*` |
 | **Bewegung** | `xy_feedrate`, `z_feedrate`, `e_feedrate`, `default_extrusion` |
 | **Monitor** | `monitor_interval` (Sekunden für `/monitor`) |
@@ -65,7 +65,15 @@ Pro Loop-Eintrag (`prepare`, `level_compare`, `temp2_*`, …): z. B. `desc`, `
 
 ## Prusa Mini und darüber hinaus
 
-Das Tool wurde für den Prusa Mini entwickelt und enthält eine entsprechende Konfiguration. Es ist so aufgebaut, dass man es für andere G-Code-Drucker anpassen kann, indem man eigene Konfigurationen, Makros und Befehle erstellt.
+Das Tool wurde für den Prusa Mini entwickelt; die mitgelieferte [`src/3DP-Config.ps1`](../src/3DP-Config.ps1) ist darauf ausgerichtet. Für andere G-Code-Firmware (z. B. Marlin) genügt oft das Anpassen von **COM-Port** und **Baudrate** — Loops und Paletten können zunächst die eingebauten Standardwerte nutzen.
+
+## Anderer Drucker, COM und Baudrate
+
+1. **Nur Serial anpassen (Schnellstart):** Beispieldatei [`src/3DP-Config.Marlin-Example.ps1`](../src/3DP-Config.Marlin-Example.ps1) per `-ConfigPath` laden und `ComPort` / `BaudRate` dort setzen (z. B. `115200` oder `250000`, je nach Firmware und Board).
+2. **Volle Kontrolle:** [`src/3DP-Config.ps1`](../src/3DP-Config.ps1) kopieren (z. B. nach `MeinDrucker-Config.ps1`), in der Kopie **Loops** (Homing, G29, Vorheizen), **SlashCommands**, **Makros** und Temperaturen an deinen Drucker anpassen; mit `.\src\3DP-Console.ps1 -ConfigPath .\MeinDrucker-Config.ps1` starten.
+3. **Wenn die Konsole „haengt“ oder nur Muell kommt:** Zuerst **BaudRate** in der Config aendern, **richtigen COM-Port** waehlen, **Pronterface/Slicer/ zweite 3DP-Console** am gleichen Port beenden. Nach Ablauf der Wartezeit fuer einen Befehl erscheint ein **kurzer Hinweis** in der Konsole (serielle Fehlersuche).
+
+Die **COM-Freigabe-Pruefung** in [`src/tests/Run-Integration-Tests.ps1`](../src/tests/Run-Integration-Tests.ps1) nutzt die **BaudRate aus `src/3DP-Config.ps1`**, falls lesbar — damit stimmst du den Probe-Open mit deiner Hauptconfig ab.
 
 ## Test-Guideline
 
@@ -87,6 +95,7 @@ Im **Repository-Root** (Ordner mit `src/`) in PowerShell:
 ```powershell
 .\src\3DP-Console.ps1
 .\src\3DP-Console.ps1 -ComPort COM4
+.\src\3DP-Console.ps1 -ConfigPath .\src\3DP-Config.Marlin-Example.ps1 -ComPort COM4
 .\src\3DP-Console.ps1 -Help
 .\src\3DP-Console.ps1 -Command "loop level_compare"
 .\src\3DP-Console.ps1 -ComPort COM4 -CommandFile .\batch.txt

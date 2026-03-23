@@ -9,11 +9,11 @@
 
     COVERAGE (checklist, not line %): .\src\tests\TEST-COVERAGE.de.md maps lib\*.ps1 functions to these runs.
     Optional Pester + CodeCoverage: .\src\tests\Run-Pester.ps1 (mocks Invoke-GcodeAndWaitOrAbort without SerialPort).
-    Stages used there: Direkt, Indirekt, Teilweise, Bedingt, Kein Auto-Test (+ subtypes).
+    Stages used there (German doc terms): Direct, Indirect, Partial, Conditional, No auto-test (+ subtypes).
 
     This script sets THREEDP_CONSOLE_SKIP_MAIN=1 so Main() is never started (interactive console = manual only per TEST-COVERAGE.de.md).
 
-    Optional integration flags add "bedingt" (conditional) coverage of longer or risky paths:
+    Optional integration flags add conditional ("bedingt" in TEST-COVERAGE.de.md) coverage of longer or risky paths:
     -SkipLong:$false  — Invoke-Loop with prepare, level_rehome_once, temp_ramp; G29; G29 T
     -TestLevelCompare — Invoke-LevelCompareLoop, Read-SerialAndCapture (~10+ min)
     -TestTemp2        — Invoke-Temp2LevelingLoop via Invoke-Loop (~10 min)
@@ -61,7 +61,7 @@
 
 .EXAMPLE
     .\src\tests\Test-All.ps1 -WithPort -TestLevelCompare -TestTemp2
-    Adds bedingt paths from TEST-COVERAGE.de.md (long runs).
+    Adds conditional paths from TEST-COVERAGE.de.md (long runs).
 
 .EXAMPLE
     .\src\tests\Test-All.ps1 -IntegrationPlanOnly -ComPort COM4
@@ -519,7 +519,7 @@ Test-Name "M112 sent on confirmation" {
 }
 
 Write-Host "`n=== [6f] Interactive Bed Leveling ===" -ForegroundColor Cyan
-# TDD: Get-MeshCellColor - testbare Farb-Logik (value, prevValue, thresholds) -> color, isImprovement
+# TDD: Get-MeshCellColor — testable color logic (value, prevValue, thresholds) -> color, isImprovement
 Test-Name "Get-MeshCellColor value 0.02 -> Green" {
     $r = Get-MeshCellColor -Value 0.02 -ThresholdGreen 0.05 -ThresholdYellow 0.15
     if (-not $r -or $r.color -ne 'Green') { throw "Expected Green for 0.02, got $($r.color)" }
@@ -571,7 +571,7 @@ Test-Name "Config MeshThresholdGreenMm MeshThresholdYellowMm (Interactive Bed Le
     if ($null -ne $yellow -and ([double]$yellow -le 0 -or [double]$yellow -gt 1)) { throw "MeshThresholdYellowMm should be in (0,1], got $yellow" }
     if ($null -ne $green -and $null -ne $yellow -and [double]$green -gt [double]$yellow) { throw "MeshThresholdGreenMm ($green) must be <= MeshThresholdYellowMm ($yellow)" }
 }
-# Get-MeshCellColor Edge-Case: Value=NaN -> definiertes Verhalten (nicht crashen)
+# Get-MeshCellColor edge case: Value=NaN -> defined behavior (must not crash)
 Test-Name "Get-MeshCellColor value NaN does not crash" {
     $r = Get-MeshCellColor -Value ([double]::NaN) -ThresholdGreen 0.05 -ThresholdYellow 0.15
     if (-not $r) { throw "Expected result object, got null" }
@@ -579,12 +579,12 @@ Test-Name "Get-MeshCellColor value NaN does not crash" {
     # |NaN| > Threshold -> Red (definiertes Verhalten)
     if ($r.color -ne 'Red') { throw "Expected Red for NaN (|NaN|>threshold), got $($r.color)" }
 }
-# Format-MeshWithColors: Aufruf mit gueltigem Mesh wirft nicht
+# Format-MeshWithColors: call with valid mesh must not throw
 Test-Name "Format-MeshWithColors with valid mesh does not throw" {
     $smallMesh = @( @(0.01, 0.02), @(0.03, 0.04) )
     $null = Format-MeshWithColors -Mesh $smallMesh
 }
-# Format-MeshWithColors mit PrevMesh: Delta-Logik (↓/↑) greift, Aufruf ohne Fehler
+# Format-MeshWithColors with PrevMesh: delta logic (↓/↑) applies, call without error
 Test-Name "Format-MeshWithColors with PrevMesh does not throw" {
     $mesh = @( @(0.01, 0.10), @(0.15, 0.02) )
     $prevMesh = @( @(0.05, 0.08), @(0.12, 0.06) )
@@ -784,8 +784,8 @@ Test-Name "Session transcript schreibt Zeile wenn aktiviert (Temp-Ordner)" {
 }
 
 # =============================================================================
-# INTEGRATION TESTS [7] — COM + Drucker (siehe TEST-COVERAGE.de.md: Direkt / Bedingt)
-#   -TestLevelCompare / -TestTemp2 / -SkipLong:$false / -TestM112 erweitern die Pfade dort.
+# INTEGRATION TESTS [7] — COM + printer (see TEST-COVERAGE.de.md: direct / conditional)
+#   -TestLevelCompare / -TestTemp2 / -SkipLong:$false / -TestM112 extend the paths there.
 # =============================================================================
 if ($WithPort -or $IntegrationPlanOnly) {
     $intComPort = $TestComPort
@@ -809,18 +809,33 @@ if ($WithPort -and -not $IntegrationPlanOnly) {
             'temp'
         ) | Set-Content -LiteralPath $tmpBatch -Encoding UTF8
 
+        # Child must not inherit THREEDP_CONSOLE_SKIP_MAIN=1 (Test-All sets it); else Main/batch never runs.
+        # Separate cmd.exe process clears the var; avoids exit from nested & closing this host. PS 5.1: Write-Host is not capturable anyway.
         Test-Name "Subprocess -CommandFile (M105 + temp)" {
-            $out = & $consoleScript -ComPort $intComPort -CommandFile $tmpBatch 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "Expected exit 0, got $LASTEXITCODE" }
-            $s = $out | Out-String
-            if ($s -notmatch '\[OK\]|Connected') { throw "Expected Connected or [OK] in output, got: $s" }
+            $qConsole = '"' + ($consoleScript -replace '"', '\"') + '"'
+            $qTmp = '"' + ($tmpBatch -replace '"', '\"') + '"'
+            $qCom = '"' + ($intComPort -replace '"', '\"') + '"'
+            $cmdLine = "set THREEDP_CONSOLE_SKIP_MAIN=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $qConsole -ComPort $qCom -CommandFile $qTmp"
+            $p = Start-Process -FilePath cmd.exe -ArgumentList @('/c', $cmdLine) -Wait -PassThru -NoNewWindow
+            if ($p.ExitCode -ne 0) { throw "Expected child exit 0, got $($p.ExitCode)" }
         }
 
         Test-Name "Subprocess -StdinCommands (M105 + temp)" {
-            $out = @('M105', 'temp') | & $consoleScript -ComPort $intComPort -StdinCommands 2>&1
-            if ($LASTEXITCODE -ne 0) { throw "Expected exit 0, got $LASTEXITCODE" }
-            $s = $out | Out-String
-            if ($s -notmatch '\[OK\]|Connected') { throw "Expected Connected or [OK] in output, got: $s" }
+            $runner = Join-Path $env:TEMP ('3dp_stdin_integration_{0}.ps1' -f ([Guid]::NewGuid().ToString('n')))
+            $runnerBody = @(
+                '$ErrorActionPreference = "Stop"'
+                ('@(''M105'',''temp'') | & "{0}" -ComPort "{1}" -StdinCommands' -f ($consoleScript -replace '"', '`"'), $intComPort)
+            )
+            try {
+                Set-Content -LiteralPath $runner -Value $runnerBody -Encoding UTF8
+                $qRunner = '"' + ($runner -replace '"', '\"') + '"'
+                $cmdLine = "set THREEDP_CONSOLE_SKIP_MAIN=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $qRunner"
+                $p = Start-Process -FilePath cmd.exe -ArgumentList @('/c', $cmdLine) -Wait -PassThru -NoNewWindow
+                if ($p.ExitCode -ne 0) { throw "Expected child exit 0, got $($p.ExitCode)" }
+            }
+            finally {
+                if (Test-Path -LiteralPath $runner) { Remove-Item -LiteralPath $runner -Force -ErrorAction SilentlyContinue }
+            }
         }
     }
     finally {
@@ -1014,8 +1029,8 @@ if ($WithPort -and -not $IntegrationPlanOnly) {
             Write-Host "  (SkipHeating: move, extrude, reverse, home skipped)" -ForegroundColor DarkGray
         }
 
-        # Invoke-Monitor: bei THREEDP_CONSOLE_SKIP_MAIN=1 eine Runde M105+Read, dann Abbruch (siehe Commands.ps1)
-        Test-Name "Invoke-Monitor (eine Runde, SKIP_MAIN)" {
+        # Invoke-Monitor: with THREEDP_CONSOLE_SKIP_MAIN=1 one M105+read round then exit (see Commands.ps1)
+        Test-Name "Invoke-Monitor (one round, SKIP_MAIN)" {
             Invoke-Monitor -Port $port -Args "0.1"
         }
 
@@ -1160,7 +1175,7 @@ if ($WithPort -and -not $IntegrationPlanOnly) {
 }
 
 # =============================================================================
-# ERGEBNIS
+# RESULT
 # =============================================================================
 Write-Host "`n=== Done ===" -ForegroundColor Cyan
 if ($fail -gt 0) {

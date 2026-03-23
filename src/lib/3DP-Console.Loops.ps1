@@ -4,10 +4,10 @@
 #>
 
 # =============================================================================
-# 10. LOOPS (Level-Compare, allgemeine Loops)
+# 10. LOOPS (Level-compare, general loops)
 # =============================================================================
 
-# Nach Strg+C (CancelKeyPress in Main): einmal true, dann Flag loeschen — auch zwischen Start-Sleep in Read-Serial* nutzbar.
+# After Ctrl+C (CancelKeyPress in Main): return true once, then clear flag — usable between Start-Sleep in Read-Serial*.
 function Test-3DPConsoleCtrlCRequestedAndReset {
     if ($Script:3DPConsoleInterruptRequested) {
         $Script:3DPConsoleInterruptRequested = $false
@@ -35,7 +35,7 @@ function Read-3DPConsoleEscapePollCore {
         $k = $null
         try { $k = & $ReadKey } catch { }
         if ($k -and $k.Key -eq [System.ConsoleKey]::Escape) { return 'Escape' }
-        # Mit TreatControlCAsInput: Strg+C kommt als Zeichen — wie Esc abbrechen (ohne PowerShell „Batch abbrechen?“).
+        # With TreatControlCAsInput: Ctrl+C arrives as a character — cancel like Esc (no PowerShell "Stop batch job?").
         if ($k -and $k.KeyChar -eq [char]3) { return 'Escape' }
     } catch { }
     return $null
@@ -53,7 +53,7 @@ function Read-3DPConsoleEscapePoll {
     return Read-3DPConsoleEscapePollCore -KeyAvailable $api.KeyAvailable -ReadKey $api.ReadKey
 }
 
-# Oberste Interactive-Schleife: auch bei SKIP_MAIN=1 Konsolen-Check wie zuvor.
+# Top-level interactive loop: console check as before even with SKIP_MAIN=1.
 # Pester: $global:3DPConsoleInteractiveTopEscapePollTestDelegate
 function Read-3DPConsoleEscapePollInteractiveTop {
     $td = $global:3DPConsoleInteractiveTopEscapePollTestDelegate
@@ -408,7 +408,7 @@ function Invoke-InteractiveBedLevelLoop {
         # --- G28 Referenz ---
         if (-not (Invoke-GcodeAndWaitOrAbort -Port $Port -Gcode "G28")) { return }
 
-        # --- G29 Messung ---
+        # --- G29 measurement ---
         $lineCount = Send-Gcode -Port $Port -Gcode "G29"
         $g29Out = Read-SerialAndCapture -Port $Port -Ms 300000 -ExpectedOkCount $lineCount -AllowAbort
         if ($null -eq $g29Out) { Write-Host '  [Abgebrochen oder Fehler]' -ForegroundColor Red; return }
@@ -431,7 +431,7 @@ function Invoke-InteractiveBedLevelLoop {
         # --- Eingabe (Enter/Esc) ---
         Write-Host ''
         Write-Host '  [Enter] neue Messung, [Esc] beenden' -ForegroundColor Gray
-        # Headless/Pester: sonst Endlosschleife ohne Tastatur
+        # Headless/Pester: else infinite loop with no keyboard
         if ($env:THREEDP_CONSOLE_SKIP_MAIN -eq '1') {
             return
         }
@@ -487,7 +487,7 @@ function Invoke-Loop {
         return
     }
     $cmds = if ($entry -is [hashtable] -and $entry.cmds) { $entry.cmds } elseif ($entry -is [array]) { $entry } else { $null }
-    # String ist IEnumerable -> wuerde zeichenweise iterieren; als ein Befehl behandeln.
+    # String is IEnumerable -> would iterate char-by-char; treat as one command.
     if ($cmds -is [string]) { $cmds = , $cmds }
     elseif ($null -ne $cmds) { $cmds = @($cmds) }
     if (-not $cmds -or $cmds.Count -eq 0) {
